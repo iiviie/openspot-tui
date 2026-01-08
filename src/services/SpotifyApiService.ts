@@ -6,6 +6,13 @@
 
 import { getAuthService, SPOTIFY_CLIENT_ID } from "./AuthService";
 import { getCacheService, CacheKeys, CacheTTL } from "./CacheService";
+import {
+  SPOTIFY_API_BASE,
+  DEFAULT_RATE_LIMIT_RETRY_SECONDS,
+  API_LIMITS,
+  DEFAULT_MARKET,
+  HTTP_STATUS,
+} from "../config/constants";
 import type {
   SpotifySearchResults,
   SpotifyTrack,
@@ -25,8 +32,6 @@ import {
 } from "../schemas/spotify";
 import type { z } from "zod";
 
-const API_BASE = "https://api.spotify.com/v1";
-
 /**
  * Spotify Web API Service with validated responses and caching
  */
@@ -44,7 +49,7 @@ export class SpotifyApiService {
   ): Promise<T> {
     const token = await this.authService.getValidAccessToken();
 
-    const response = await fetch(`${API_BASE}${endpoint}`, {
+    const response = await fetch(`${SPOTIFY_API_BASE}${endpoint}`, {
       ...options,
       headers: {
         Authorization: `Bearer ${token}`,
@@ -54,13 +59,16 @@ export class SpotifyApiService {
     });
 
     // Handle rate limiting
-    if (response.status === 429) {
-      const retryAfter = parseInt(response.headers.get("Retry-After") || "5", 10);
+    if (response.status === HTTP_STATUS.RATE_LIMITED) {
+      const retryAfter = parseInt(
+        response.headers.get("Retry-After") ?? String(DEFAULT_RATE_LIMIT_RETRY_SECONDS),
+        10
+      );
       throw new Error(`Rate limited. Retry after ${retryAfter} seconds.`);
     }
 
     // Handle no content responses
-    if (response.status === 204) {
+    if (response.status === HTTP_STATUS.NO_CONTENT) {
       return {} as T;
     }
 
@@ -93,7 +101,7 @@ export class SpotifyApiService {
   async search(
     query: string,
     types: ("track" | "artist" | "album" | "playlist")[] = ["track"],
-    limit: number = 20
+    limit: number = API_LIMITS.SEARCH_RESULTS
   ): Promise<SpotifySearchResults> {
     const params = new URLSearchParams({
       q: query,
@@ -116,7 +124,7 @@ export class SpotifyApiService {
   /**
    * Search for tracks only
    */
-  async searchTracks(query: string, limit: number = 20): Promise<SpotifyTrack[]> {
+  async searchTracks(query: string, limit: number = API_LIMITS.SEARCH_RESULTS): Promise<SpotifyTrack[]> {
     const results = await this.search(query, ["track"], limit);
     return results.tracks?.items || [];
   }
@@ -124,7 +132,7 @@ export class SpotifyApiService {
   /**
    * Search for artists only
    */
-  async searchArtists(query: string, limit: number = 20): Promise<SpotifyArtist[]> {
+  async searchArtists(query: string, limit: number = API_LIMITS.SEARCH_RESULTS): Promise<SpotifyArtist[]> {
     const results = await this.search(query, ["artist"], limit);
     return results.artists?.items || [];
   }
@@ -132,7 +140,7 @@ export class SpotifyApiService {
   /**
    * Search for albums only
    */
-  async searchAlbums(query: string, limit: number = 20): Promise<SpotifyAlbum[]> {
+  async searchAlbums(query: string, limit: number = API_LIMITS.SEARCH_RESULTS): Promise<SpotifyAlbum[]> {
     const results = await this.search(query, ["album"], limit);
     return results.albums?.items || [];
   }
@@ -140,7 +148,7 @@ export class SpotifyApiService {
   /**
    * Search for playlists only
    */
-  async searchPlaylists(query: string, limit: number = 20): Promise<SpotifyPlaylist[]> {
+  async searchPlaylists(query: string, limit: number = API_LIMITS.SEARCH_RESULTS): Promise<SpotifyPlaylist[]> {
     const results = await this.search(query, ["playlist"], limit);
     return results.playlists?.items || [];
   }
@@ -275,7 +283,7 @@ export class SpotifyApiService {
    * Get user's saved tracks with validation and caching
    */
   async getSavedTracks(
-    limit: number = 50,
+    limit: number = API_LIMITS.SAVED_TRACKS,
     offset: number = 0
   ): Promise<SpotifyPaginatedResponse<SpotifySavedTrack>> {
     const cacheKey = CacheKeys.savedTracks(limit, offset);
@@ -309,7 +317,7 @@ export class SpotifyApiService {
    * Get user's playlists with validation and caching
    */
   async getPlaylists(
-    limit: number = 50,
+    limit: number = API_LIMITS.PLAYLISTS,
     offset: number = 0
   ): Promise<SpotifyPaginatedResponse<SpotifyPlaylist>> {
     const cacheKey = CacheKeys.playlists(limit, offset);
@@ -344,7 +352,7 @@ export class SpotifyApiService {
    */
   async getPlaylistTracks(
     playlistId: string,
-    limit: number = 100,
+    limit: number = API_LIMITS.PLAYLIST_TRACKS,
     offset: number = 0
   ): Promise<SpotifyPaginatedResponse<{ track: SpotifyTrack | null }>> {
     const cacheKey = CacheKeys.playlistTracks(playlistId, limit, offset);
@@ -418,7 +426,7 @@ export class SpotifyApiService {
    */
   async getAlbumTracks(
     albumId: string,
-    limit: number = 50,
+    limit: number = API_LIMITS.ALBUM_TRACKS,
     offset: number = 0
   ): Promise<SpotifyPaginatedResponse<SpotifyTrack>> {
     const params = new URLSearchParams({
@@ -431,7 +439,7 @@ export class SpotifyApiService {
   /**
    * Get an artist's top tracks
    */
-  async getArtistTopTracks(artistId: string, market: string = "US"): Promise<{ tracks: SpotifyTrack[] }> {
+  async getArtistTopTracks(artistId: string, market: string = DEFAULT_MARKET): Promise<{ tracks: SpotifyTrack[] }> {
     return this.request(`/artists/${artistId}/top-tracks?market=${market}`);
   }
 }

@@ -3,6 +3,12 @@ import { randomBytes, createHash } from "crypto";
 import { URL } from "url";
 import type { AuthConfig, PKCEChallenge, SpotifyTokens, StoredCredentials } from "../types/spotify";
 import { getConfigService, type ConfigService } from "./ConfigService";
+import {
+  AUTH_TIMEOUT_MS,
+  DEFAULT_CALLBACK_PORT,
+  PKCE_VERIFIER_BYTES,
+  PKCE_VERIFIER_LENGTH,
+} from "../config/constants";
 
 /**
  * Spotify OAuth2 Authentication Service
@@ -43,7 +49,7 @@ export class AuthService {
     "user-follow-modify",
   ];
 
-  constructor(clientId: string, redirectUri: string = "http://127.0.0.1:8888/callback") {
+  constructor(clientId: string, redirectUri: string = `http://127.0.0.1:${DEFAULT_CALLBACK_PORT}/callback`) {
     this.config = {
       clientId,
       redirectUri,
@@ -56,13 +62,13 @@ export class AuthService {
    * Generate PKCE code verifier and challenge
    */
   private generatePKCE(): PKCEChallenge {
-    // Generate random code verifier (43-128 characters)
-    const codeVerifier = randomBytes(64)
+    // Generate random code verifier (43-128 characters per OAuth 2.0 spec)
+    const codeVerifier = randomBytes(PKCE_VERIFIER_BYTES)
       .toString("base64")
       .replace(/\+/g, "-")
       .replace(/\//g, "_")
       .replace(/=/g, "")
-      .substring(0, 128);
+      .substring(0, PKCE_VERIFIER_LENGTH);
 
     // Generate code challenge (SHA256 hash of verifier, base64url encoded)
     const hash = createHash("sha256").update(codeVerifier).digest("base64");
@@ -267,13 +273,13 @@ export class AuthService {
         reject(new Error(`Failed to start callback server: ${err.message}`));
       });
 
-      // Timeout after 5 minutes
+      // Timeout for authentication
       setTimeout(() => {
         if (this.server) {
           this.cleanup();
           reject(new Error("Authentication timed out"));
         }
-      }, 5 * 60 * 1000);
+      }, AUTH_TIMEOUT_MS);
     });
   }
 

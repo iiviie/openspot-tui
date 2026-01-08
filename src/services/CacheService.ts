@@ -3,6 +3,8 @@
  * In-memory caching with TTL and invalidation support
  */
 
+import { CACHE_CONFIG, CACHE_TTL } from "../config/constants";
+
 export interface CacheEntry<T> {
   data: T;
   timestamp: number;
@@ -21,7 +23,7 @@ export class CacheService {
   private defaultTTL: number;
 
   constructor(options: CacheOptions = {}) {
-    this.defaultTTL = options.ttl || 5 * 60 * 1000; // Default 5 minutes
+    this.defaultTTL = options.ttl ?? CACHE_CONFIG.DEFAULT_TTL_MS;
   }
 
   /**
@@ -169,13 +171,13 @@ let cacheServiceInstance: CacheService | null = null;
 export function getCacheService(): CacheService {
   if (!cacheServiceInstance) {
     cacheServiceInstance = new CacheService({
-      ttl: 5 * 60 * 1000, // 5 minutes default
+      ttl: CACHE_CONFIG.DEFAULT_TTL_MS,
     });
     
-    // Setup periodic cleanup (every 10 minutes)
+    // Setup periodic cleanup
     setInterval(() => {
       cacheServiceInstance?.cleanup();
-    }, 10 * 60 * 1000);
+    }, CACHE_CONFIG.CLEANUP_INTERVAL_MS);
   }
   return cacheServiceInstance;
 }
@@ -202,11 +204,6 @@ export const CacheKeys = {
 } as const;
 
 /**
- * TTL configurations for different data types
+ * Re-export TTL configurations from constants for convenience
  */
-export const CacheTTL = {
-  SHORT: 2 * 60 * 1000,      // 2 minutes - for search results
-  MEDIUM: 5 * 60 * 1000,     // 5 minutes - default
-  LONG: 15 * 60 * 1000,      // 15 minutes - for rarely changing data
-  VERY_LONG: 60 * 60 * 1000, // 1 hour - for static data
-} as const;
+export { CACHE_TTL as CacheTTL } from "../config/constants";

@@ -4,7 +4,7 @@ import type { NowPlayingInfo } from "./types/mpris";
 import { Sidebar, NowPlaying, SearchBar, ContentWindow, StatusSidebar } from "./components";
 import { cleanupTerminal, calculateLayout } from "./utils";
 import { mockQueue } from "./data/mock";
-import { KEY_BINDINGS, TRACK_END_THRESHOLD_MS, SEEK_STEP_MS, UPDATE_INTERVAL_MS } from "./config";
+import { KEY_BINDINGS, TRACK_END_THRESHOLD_MS, SEEK_STEP_MS, UPDATE_INTERVAL_MS, PLAYBACK_UPDATE_DELAY_MS } from "./config";
 import { getMprisService, MprisService, getSpotifyApiService, SpotifyApiService } from "./services";
 
 /**
@@ -387,7 +387,7 @@ export class App {
     try {
       await this.spotifyApi.playTrack(trackUri);
       // Update UI after short delay to let playback start
-      setTimeout(() => this.updateFromMpris(), 500);
+      setTimeout(() => this.updateFromMpris(), PLAYBACK_UPDATE_DELAY_MS);
     } catch (error) {
       console.error("Failed to play track:", error);
     }
