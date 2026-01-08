@@ -5,7 +5,7 @@ import { Sidebar, NowPlaying, SearchBar, ContentWindow, StatusSidebar } from "./
 import { cleanupTerminal, calculateLayout } from "./utils";
 import { mockQueue } from "./data/mock";
 import { KEY_BINDINGS } from "./config";
-import { getMprisService, MprisService } from "./services";
+import { getMprisService, MprisService, getSpotifyApiService, SpotifyApiService } from "./services";
 
 /**
  * Main application class
@@ -26,6 +26,7 @@ export class App {
   private renderer!: CliRenderer;
   private layout!: LayoutDimensions;
   private mpris!: MprisService;
+  private spotifyApi!: SpotifyApiService;
   private updateInterval: Timer | null = null;
   
   // Components - new layout
@@ -48,11 +49,15 @@ export class App {
   private shuffle: boolean = false;
   private repeat: string = "None";
 
+  // Input mode
+  private inputMode: "normal" | "search" | "results" = "normal";
+
   /**
    * Initialize and start the application
    */
   async start(): Promise<void> {
     await this.initializeMpris();
+    this.initializeSpotifyApi();
     await this.initialize();
     this.setupComponents();
     this.render();
@@ -72,6 +77,13 @@ export class App {
       console.log("Warning: Could not connect to spotifyd. Make sure it's running.");
       console.log("Run: spotifyd --no-daemon");
     }
+  }
+
+  /**
+   * Initialize Spotify Web API service
+   */
+  private initializeSpotifyApi(): void {
+    this.spotifyApi = getSpotifyApiService();
   }
 
   /**
@@ -145,9 +157,11 @@ export class App {
     
     // Center top - Search bar
     this.searchBar = new SearchBar(this.renderer, this.layout);
+    this.searchBar.onSearch = (query) => this.handleSearch(query);
     
     // Center main - Content window
-    this.contentWindow = new ContentWindow(this.renderer, this.layout, this.state.queue);
+    this.contentWindow = new ContentWindow(this.renderer, this.layout);
+    this.contentWindow.onTrackSelect = (uri) => this.handlePlayTrack(uri);
     
     // Right sidebar - Status
     this.statusSidebar = new StatusSidebar(
@@ -161,6 +175,35 @@ export class App {
     
     // Bottom bar - Now playing
     this.nowPlaying = new NowPlaying(this.renderer, this.layout, this.state.currentTrack);
+  }
+
+  /**
+   * Handle search query
+   */
+  private async handleSearch(query: string): Promise<void> {
+    this.contentWindow.setLoading(true);
+    this.inputMode = "results";
+
+    try {
+      const tracks = await this.spotifyApi.searchTracks(query, 15);
+      this.contentWindow.updateResults(tracks);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Search failed";
+      this.contentWindow.setStatus(`Error: ${message}`);
+    }
+  }
+
+  /**
+   * Handle playing a track
+   */
+  private async handlePlayTrack(trackUri: string): Promise<void> {
+    try {
+      await this.spotifyApi.playTrack(trackUri);
+      // Update UI after short delay to let playback start
+      setTimeout(() => this.updateFromMpris(), 500);
+    } catch (error) {
+      console.error("Failed to play track:", error);
+    }
   }
 
   /**
@@ -201,9 +244,26 @@ export class App {
   }
 
   /**
-   * Handle keyboard input
+   * Handle keyboard input based on current mode
    */
   private handleKeyPress(key: KeyEvent): void {
+    // Handle based on input mode
+    switch (this.inputMode) {
+      case "search":
+        this.handleSearchModeInput(key);
+        break;
+      case "results":
+        this.handleResultsModeInput(key);
+        break;
+      default:
+        this.handleNormalModeInput(key);
+    }
+  }
+
+  /**
+   * Handle input in normal mode
+   */
+  private handleNormalModeInput(key: KeyEvent): void {
     const keyName = key.name;
     
     // Quit
@@ -217,7 +277,14 @@ export class App {
       return;
     }
 
-    // Navigation
+    // Enter search mode with /
+    if (keyName === "/" || keyName === "slash") {
+      this.inputMode = "search";
+      this.searchBar.activate();
+      return;
+    }
+
+    // Navigation in sidebar
     if ((KEY_BINDINGS.up as readonly string[]).includes(keyName)) {
       this.sidebar.selectPrevious();
       return;
@@ -236,6 +303,94 @@ export class App {
     }
 
     // Playback controls
+    this.handlePlaybackControls(keyName);
+  }
+
+  /**
+   * Handle input in search mode (typing in search bar)
+   */
+  private handleSearchModeInput(key: KeyEvent): void {
+    const keyName = key.name;
+
+    // Escape to cancel
+    if (keyName === "escape") {
+      this.searchBar.handleEscape();
+      this.inputMode = "normal";
+      return;
+    }
+
+    // Enter to submit
+    if (keyName === "return" || keyName === "enter") {
+      this.searchBar.handleEnter();
+      return;
+    }
+
+    // Backspace
+    if (keyName === "backspace") {
+      this.searchBar.handleBackspace();
+      return;
+    }
+
+    // Regular character input
+    if (key.name && key.name.length === 1) {
+      this.searchBar.handleChar(key.name);
+    } else if ((key as any).sequence && (key as any).sequence.length === 1) {
+      // Handle shifted characters and special chars
+      this.searchBar.handleChar((key as any).sequence);
+    }
+  }
+
+  /**
+   * Handle input in results mode (navigating search results)
+   */
+  private handleResultsModeInput(key: KeyEvent): void {
+    const keyName = key.name;
+
+    // Quit
+    if (key.ctrl && keyName === "c") {
+      this.exit();
+      return;
+    }
+
+    if ((KEY_BINDINGS.quit as readonly string[]).includes(keyName)) {
+      this.exit();
+      return;
+    }
+
+    // Escape to go back to normal mode
+    if (keyName === "escape") {
+      this.contentWindow.clearResults();
+      this.searchBar.clear();
+      this.inputMode = "normal";
+      return;
+    }
+
+    // New search with /
+    if (keyName === "/" || keyName === "slash") {
+      this.inputMode = "search";
+      this.searchBar.clear();
+      this.searchBar.activate();
+      return;
+    }
+
+    // Navigate results
+    if ((KEY_BINDINGS.up as readonly string[]).includes(keyName)) {
+      this.contentWindow.selectPrevious();
+      return;
+    }
+
+    if ((KEY_BINDINGS.down as readonly string[]).includes(keyName)) {
+      this.contentWindow.selectNext();
+      return;
+    }
+
+    // Select and play
+    if ((KEY_BINDINGS.select as readonly string[]).includes(keyName)) {
+      this.contentWindow.selectCurrent();
+      return;
+    }
+
+    // Playback controls still work in results mode
     this.handlePlaybackControls(keyName);
   }
 
