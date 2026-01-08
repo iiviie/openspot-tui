@@ -26,10 +26,10 @@ export const STATUS_BAR_HEIGHT = NOW_PLAYING_HEIGHT;
  * Library menu items
  */
 export const LIBRARY_MENU_ITEMS: MenuItem[] = [
-  { id: "artists", label: "Artists" },
-  { id: "albums", label: "Albums" },
   { id: "songs", label: "Songs" },
   { id: "playlists", label: "Playlists" },
+  { id: "albums", label: "Albums" },
+  { id: "artists", label: "Artists" },
 ];
 
 /**
