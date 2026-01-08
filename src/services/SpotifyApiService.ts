@@ -1,6 +1,7 @@
 /**
  * Spotify Web API Service
  * Handles all Spotify Web API calls for search, playback, library, etc.
+ * Includes runtime validation with Zod for API response safety.
  */
 
 import { getAuthService, SPOTIFY_CLIENT_ID } from "./AuthService";
@@ -14,21 +15,30 @@ import type {
   SpotifyCurrentlyPlaying,
   SpotifySavedTrack,
 } from "../types/spotify";
+import {
+  SearchResultsSchema,
+  PaginatedSavedTracksSchema,
+  PaginatedPlaylistsSchema,
+  PaginatedPlaylistTracksSchema,
+  safeValidate,
+} from "../schemas/spotify";
+import type { z } from "zod";
 
 const API_BASE = "https://api.spotify.com/v1";
 
 /**
- * Spotify Web API Service
+ * Spotify Web API Service with validated responses
  */
 export class SpotifyApiService {
   private authService = getAuthService(SPOTIFY_CLIENT_ID);
 
   /**
-   * Make an authenticated API request
+   * Make an authenticated API request with optional validation
    */
   private async request<T>(
     endpoint: string,
-    options: RequestInit = {}
+    options: RequestInit = {},
+    validator?: z.ZodSchema<T>
   ): Promise<T> {
     const token = await this.authService.getValidAccessToken();
 
@@ -57,7 +67,18 @@ export class SpotifyApiService {
       throw new Error(`API error ${response.status}: ${error}`);
     }
 
-    return response.json() as Promise<T>;
+    const data = await response.json();
+
+    // Validate response if validator provided
+    if (validator) {
+      const validated = safeValidate(validator, data, `${endpoint}`);
+      if (!validated) {
+        throw new Error(`Invalid API response from ${endpoint}`);
+      }
+      return validated;
+    }
+
+    return data as T;
   }
 
   // ─────────────────────────────────────────────────────────────
@@ -65,7 +86,7 @@ export class SpotifyApiService {
   // ─────────────────────────────────────────────────────────────
 
   /**
-   * Search for tracks, artists, albums, or playlists
+   * Search for tracks, artists, albums, or playlists with validation
    */
   async search(
     query: string,
@@ -78,7 +99,16 @@ export class SpotifyApiService {
       limit: limit.toString(),
     });
 
-    return this.request<SpotifySearchResults>(`/search?${params}`);
+    const data = await this.request<unknown>(`/search?${params}`);
+    
+    // Validate response
+    const validated = safeValidate(SearchResultsSchema, data, "search");
+    if (!validated) {
+      // Return empty results on validation failure
+      return { tracks: { items: [], total: 0, limit, offset: 0, href: "", next: null, previous: null } };
+    }
+    
+    return validated as SpotifySearchResults;
   }
 
   /**
@@ -240,7 +270,7 @@ export class SpotifyApiService {
   // ─────────────────────────────────────────────────────────────
 
   /**
-   * Get user's saved tracks
+   * Get user's saved tracks with validation
    */
   async getSavedTracks(
     limit: number = 50,
@@ -250,11 +280,20 @@ export class SpotifyApiService {
       limit: limit.toString(),
       offset: offset.toString(),
     });
-    return this.request(`/me/tracks?${params}`);
+    
+    const data = await this.request<unknown>(`/me/tracks?${params}`);
+    const validated = safeValidate(PaginatedSavedTracksSchema, data, "getSavedTracks");
+    
+    if (!validated) {
+      // Return empty on validation failure
+      return { items: [], total: 0, limit, offset, href: "", next: null, previous: null };
+    }
+    
+    return validated as SpotifyPaginatedResponse<SpotifySavedTrack>;
   }
 
   /**
-   * Get user's playlists
+   * Get user's playlists with validation
    */
   async getPlaylists(
     limit: number = 50,
@@ -264,11 +303,20 @@ export class SpotifyApiService {
       limit: limit.toString(),
       offset: offset.toString(),
     });
-    return this.request(`/me/playlists?${params}`);
+    
+    const data = await this.request<unknown>(`/me/playlists?${params}`);
+    const validated = safeValidate(PaginatedPlaylistsSchema, data, "getPlaylists");
+    
+    if (!validated) {
+      // Return empty on validation failure
+      return { items: [], total: 0, limit, offset, href: "", next: null, previous: null };
+    }
+    
+    return validated as SpotifyPaginatedResponse<SpotifyPlaylist>;
   }
 
   /**
-   * Get tracks in a playlist
+   * Get tracks in a playlist with validation
    */
   async getPlaylistTracks(
     playlistId: string,
@@ -279,7 +327,16 @@ export class SpotifyApiService {
       limit: limit.toString(),
       offset: offset.toString(),
     });
-    return this.request(`/playlists/${playlistId}/tracks?${params}`);
+    
+    const data = await this.request<unknown>(`/playlists/${playlistId}/tracks?${params}`);
+    const validated = safeValidate(PaginatedPlaylistTracksSchema, data, "getPlaylistTracks");
+    
+    if (!validated) {
+      // Return empty on validation failure
+      return { items: [], total: 0, limit, offset, href: "", next: null, previous: null };
+    }
+    
+    return validated as SpotifyPaginatedResponse<{ track: SpotifyTrack | null }>;
   }
 
   /**
