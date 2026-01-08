@@ -375,6 +375,14 @@ export class AuthService {
    * Error HTML page
    */
   private getErrorHtml(error: string): string {
+    // Escape HTML to prevent XSS
+    const escapedError = error
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+
     return `
 <!DOCTYPE html>
 <html>
@@ -409,7 +417,7 @@ export class AuthService {
     <div class="icon">✗</div>
     <h1>Authentication Failed</h1>
     <p>Something went wrong during authentication.</p>
-    <p class="error">${error}</p>
+    <p class="error">${escapedError}</p>
     <p>Please close this window and try again.</p>
   </div>
 </body>

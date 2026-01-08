@@ -4,7 +4,7 @@ import type { NowPlayingInfo } from "./types/mpris";
 import { Sidebar, NowPlaying, SearchBar, ContentWindow, StatusSidebar } from "./components";
 import { cleanupTerminal, calculateLayout } from "./utils";
 import { mockQueue } from "./data/mock";
-import { KEY_BINDINGS } from "./config";
+import { KEY_BINDINGS, TRACK_END_THRESHOLD_MS, SEEK_STEP_MS, UPDATE_INTERVAL_MS } from "./config";
 import { getMprisService, MprisService, getSpotifyApiService, SpotifyApiService } from "./services";
 
 /**
@@ -77,17 +77,28 @@ export class App {
    * Initialize and start the application
    */
   async start(): Promise<void> {
-    await this.initializeMpris();
-    this.initializeSpotifyApi();
-    await this.initialize();
-    this.setupComponents();
-    this.render();
-    this.setupInputHandlers();
-    this.setupSignalHandlers();
-    this.startUpdateLoop();
-    
-    // Load saved tracks (Songs) as default view
-    await this.loadSavedTracks();
+    try {
+      await this.initializeMpris();
+      this.initializeSpotifyApi();
+      await this.initialize();
+      this.setupComponents();
+      this.render();
+      this.setupInputHandlers();
+      this.setupSignalHandlers();
+      this.startUpdateLoop();
+      
+      // Load saved tracks (Songs) as default view
+      await this.loadSavedTracks();
+    } catch (error) {
+      console.error('Fatal error during startup:');
+      console.error(error);
+      console.error('\nPlease check:');
+      console.error('  1. spotifyd is running (spotifyd --no-daemon)');
+      console.error('  2. You are authenticated (bun run auth)');
+      console.error('  3. Your terminal supports the required features');
+      this.cleanup();
+      process.exit(1);
+    }
   }
 
   /**
@@ -181,7 +192,7 @@ export class App {
 
     // Check if track is about to end (within last 2 seconds)
     const timeRemaining = durationMs - positionMs;
-    const isAboutToEnd = timeRemaining > 0 && timeRemaining < 2000 && durationMs > 0;
+    const isAboutToEnd = timeRemaining > 0 && timeRemaining < TRACK_END_THRESHOLD_MS && durationMs > 0;
 
     // If track is about to end and we have queued items, play next from queue
     if (isAboutToEnd && !this.trackEndHandled && this.statusSidebar.hasQueuedItems()) {
@@ -448,16 +459,21 @@ export class App {
    */
   private startUpdateLoop(): void {
     this.updateInterval = setInterval(async () => {
-      await this.updateFromMpris();
-      // Re-render components with new data
-      this.nowPlaying.updateTrack(this.state.currentTrack);
-      this.statusSidebar.updateStatus(
-        this.state.currentTrack,
-        this.volume,
-        this.shuffle,
-        this.repeat
-      );
-    }, 1000); // Update every second
+      try {
+        await this.updateFromMpris();
+        // Re-render components with new data
+        this.nowPlaying.updateTrack(this.state.currentTrack);
+        this.statusSidebar.updateStatus(
+          this.state.currentTrack,
+          this.volume,
+          this.shuffle,
+          this.repeat
+        );
+      } catch (error) {
+        // Log error but keep interval running
+        console.error('Update loop error:', error);
+      }
+    }, UPDATE_INTERVAL_MS); // Update every second
   }
 
   /**
@@ -626,10 +642,10 @@ export class App {
         await this.mpris.volumeDown();
         break;
       case "right":
-        await this.mpris.seekForward(5000);
+        await this.mpris.seekForward(SEEK_STEP_MS);
         break;
       case "left":
-        await this.mpris.seekBackward(5000);
+        await this.mpris.seekBackward(SEEK_STEP_MS);
         break;
       case "s":
         await this.mpris.toggleShuffle();

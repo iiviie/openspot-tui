@@ -23,6 +23,14 @@ export const SIDEBAR_WIDTH = LEFT_SIDEBAR_WIDTH;
 export const STATUS_BAR_HEIGHT = NOW_PLAYING_HEIGHT;
 
 /**
+ * Playback constants
+ */
+export const TRACK_END_THRESHOLD_MS = 2000;  // Detect track end within 2s of completion
+export const SEEK_STEP_MS = 5000;            // Seek forward/backward by 5s
+export const UPDATE_INTERVAL_MS = 1000;      // Update UI every second
+export const TOKEN_REFRESH_BUFFER_MS = 5 * 60 * 1000; // Refresh token 5 min before expiry
+
+/**
  * Library menu items
  */
 export const LIBRARY_MENU_ITEMS: MenuItem[] = [
