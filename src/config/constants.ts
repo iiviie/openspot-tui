@@ -11,8 +11,8 @@ export const APP_VERSION = "1.0.0";
  * New 3-column layout: [LIBRARY] [SEARCH/CONTENT] [STATUS]
  *                      [         NOW PLAYING            ]
  */
-export const LEFT_SIDEBAR_WIDTH = 20;   // Library sidebar
-export const RIGHT_SIDEBAR_WIDTH = 22;  // Status sidebar
+export const LEFT_SIDEBAR_WIDTH = 28;   // Library sidebar
+export const RIGHT_SIDEBAR_WIDTH = 28;  // Status sidebar
 export const SEARCH_BAR_HEIGHT = 3;     // Search bar at top of center
 export const NOW_PLAYING_HEIGHT = 5;    // Now playing bar at bottom
 export const MIN_TERM_WIDTH = 100;
