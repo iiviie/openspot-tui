@@ -69,6 +69,10 @@ export class App {
   // Navigation stack for back functionality
   private viewStack: string[] = ["songs"];
 
+  // Track end detection for queue management
+  private previousTrackTitle: string | null = null;
+  private trackEndHandled: boolean = false;
+
   /**
    * Initialize and start the application
    */
@@ -137,9 +141,56 @@ export class App {
       this.volume = Math.round(nowPlaying.volume * 100);
       this.shuffle = nowPlaying.shuffle;
       this.repeat = nowPlaying.loopStatus;
+
+      // Check for track end to handle queue
+      await this.checkTrackEnd(nowPlaying);
     } else {
       this.state.currentTrack = null;
       this.state.isPlaying = false;
+    }
+  }
+
+  /**
+   * Check if track is about to end and handle queue playback
+   */
+  private async checkTrackEnd(nowPlaying: NowPlayingInfo): Promise<void> {
+    const currentTitle = nowPlaying.title;
+    const positionMs = nowPlaying.positionMs;
+    const durationMs = nowPlaying.durationMs;
+    
+    // Track changed - reset handled flag
+    if (currentTitle !== this.previousTrackTitle) {
+      this.trackEndHandled = false;
+      this.previousTrackTitle = currentTitle;
+    }
+
+    // Skip if repeat track is enabled (let spotifyd handle it)
+    if (this.repeat === "Track") {
+      return;
+    }
+
+    // Check if track is about to end (within last 2 seconds)
+    const timeRemaining = durationMs - positionMs;
+    const isAboutToEnd = timeRemaining > 0 && timeRemaining < 2000 && durationMs > 0;
+
+    // If track is about to end and we haven't handled it yet
+    if (isAboutToEnd && !this.trackEndHandled && this.statusSidebar.hasQueuedItems()) {
+      this.trackEndHandled = true;
+      await this.playNextFromQueue();
+    }
+  }
+
+  /**
+   * Play the next track from the queue
+   */
+  private async playNextFromQueue(): Promise<void> {
+    const nextTrack = this.statusSidebar.dequeue();
+    if (nextTrack) {
+      try {
+        await this.spotifyApi.playTrack(nextTrack.uri);
+      } catch (error) {
+        console.error("Failed to play queued track:", error);
+      }
     }
   }
 
@@ -321,6 +372,23 @@ export class App {
   }
 
   /**
+   * Add selected track to the queue
+   */
+  private addSelectedToQueue(): void {
+    // Only works when content panel is focused and showing tracks
+    if (this.focusedPanel !== "content") return;
+    
+    const selected = this.contentWindow.getSelectedItem();
+    if (!selected || selected.type !== "track") return;
+
+    this.statusSidebar.addToQueue({
+      uri: selected.uri,
+      title: selected.title,
+      artist: selected.subtitle,
+    });
+  }
+
+  /**
    * Go back in navigation
    */
   private async goBack(): Promise<void> {
@@ -464,6 +532,12 @@ export class App {
       return;
     }
 
+    // Add to queue with f
+    if (keyName === "f") {
+      this.addSelectedToQueue();
+      return;
+    }
+
     // Playback controls
     this.handlePlaybackControls(keyName);
   }
@@ -514,7 +588,12 @@ export class App {
         await this.mpris.playPause();
         break;
       case "n":
-        await this.mpris.next();
+        // Play from queue if available, otherwise use MPRIS next
+        if (this.statusSidebar.hasQueuedItems()) {
+          await this.playNextFromQueue();
+        } else {
+          await this.mpris.next();
+        }
         break;
       case "p":
         await this.mpris.previous();

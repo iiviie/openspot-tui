@@ -3,8 +3,17 @@ import type { CliRenderer, LayoutDimensions, CurrentTrack } from "../types";
 import { colors } from "../config/colors";
 
 /**
+ * Queue item interface
+ */
+export interface QueueItem {
+  uri: string;
+  title: string;
+  artist: string;
+}
+
+/**
  * Status sidebar component (right side)
- * Shows playback status, volume, shuffle/repeat state, controls help
+ * Shows playback status, volume, shuffle/repeat state, and queue
  */
 export class StatusSidebar {
   private container: BoxRenderable;
@@ -13,7 +22,9 @@ export class StatusSidebar {
   private volumeLabel: TextRenderable;
   private shuffleLabel: TextRenderable;
   private repeatLabel: TextRenderable;
-  private controlsHelp: TextRenderable[];
+  private queueTitle: TextRenderable;
+  private queueItems: TextRenderable[] = [];
+  private queue: QueueItem[] = [];
 
   constructor(
     private renderer: CliRenderer,
@@ -29,7 +40,8 @@ export class StatusSidebar {
     this.volumeLabel = this.createVolumeLabel();
     this.shuffleLabel = this.createShuffleLabel();
     this.repeatLabel = this.createRepeatLabel();
-    this.controlsHelp = this.createControlsHelp();
+    this.queueTitle = this.createQueueTitle();
+    this.queueItems = this.createQueueItems();
   }
 
   private createContainer(): BoxRenderable {
@@ -102,29 +114,108 @@ export class StatusSidebar {
     });
   }
 
-  private createControlsHelp(): TextRenderable[] {
-    const controls = [
-      "--- Controls ---",
-      "Space: Play/Pause",
-      "n: Next track",
-      "p: Previous",
-      "+/-: Volume",
-      "s: Shuffle",
-      "r: Repeat",
-      "q: Quit",
-    ];
-
-    const startY = this.layout.rightSidebarY + 9;
-    return controls.map((text, index) => {
-      return new TextRenderable(this.renderer, {
-        id: `control-help-${index}`,
-        content: text,
-        fg: index === 0 ? colors.textDim : colors.textSecondary,
-        position: "absolute",
-        left: this.layout.rightSidebarX + 2,
-        top: startY + index,
-      });
+  private createQueueTitle(): TextRenderable {
+    return new TextRenderable(this.renderer, {
+      id: "queue-title",
+      content: "QUEUE",
+      fg: colors.textDim,
+      position: "absolute",
+      left: this.layout.rightSidebarX + 2,
+      top: this.layout.rightSidebarY + 9,
     });
+  }
+
+  private createQueueItems(): TextRenderable[] {
+    // Calculate how many queue items can fit
+    const startY = this.layout.rightSidebarY + 11;
+    const availableHeight = this.layout.rightSidebarHeight - 13;
+    const maxQueueDisplay = Math.max(0, availableHeight);
+
+    const items: TextRenderable[] = [];
+    for (let i = 0; i < maxQueueDisplay; i++) {
+      items.push(
+        new TextRenderable(this.renderer, {
+          id: `queue-item-${i}`,
+          content: "",
+          fg: colors.textSecondary,
+          position: "absolute",
+          left: this.layout.rightSidebarX + 2,
+          top: startY + i,
+        })
+      );
+    }
+    return items;
+  }
+
+  /**
+   * Add a track to the queue
+   */
+  addToQueue(item: QueueItem): void {
+    this.queue.push(item);
+    this.updateQueueDisplay();
+  }
+
+  /**
+   * Remove first item from queue (after playing)
+   */
+  dequeue(): QueueItem | undefined {
+    const item = this.queue.shift();
+    this.updateQueueDisplay();
+    return item;
+  }
+
+  /**
+   * Get the current queue
+   */
+  getQueue(): QueueItem[] {
+    return [...this.queue];
+  }
+
+  /**
+   * Clear the queue
+   */
+  clearQueue(): void {
+    this.queue = [];
+    this.updateQueueDisplay();
+  }
+
+  /**
+   * Check if queue has items
+   */
+  hasQueuedItems(): boolean {
+    return this.queue.length > 0;
+  }
+
+  /**
+   * Get next track from queue without removing
+   */
+  peekQueue(): QueueItem | undefined {
+    return this.queue[0];
+  }
+
+  private updateQueueDisplay(): void {
+    const maxWidth = this.layout.rightSidebarWidth - 4;
+
+    for (let i = 0; i < this.queueItems.length; i++) {
+      if (i < this.queue.length) {
+        const item = this.queue[i];
+        const num = `${i + 1}. `;
+        let content = `${num}${item.title}`;
+        
+        // Truncate if needed
+        if (content.length > maxWidth) {
+          content = content.substring(0, maxWidth - 1) + "…";
+        }
+
+        (this.queueItems[i] as any).content = content;
+        (this.queueItems[i] as any).fg = i === 0 ? colors.accent : colors.textSecondary;
+      } else if (i === 0 && this.queue.length === 0) {
+        (this.queueItems[i] as any).content = "(empty)";
+        (this.queueItems[i] as any).fg = colors.textDim;
+      } else {
+        (this.queueItems[i] as any).content = "";
+      }
+    }
   }
 
   /**
@@ -168,7 +259,11 @@ export class StatusSidebar {
     this.renderer.root.add(this.volumeLabel);
     this.renderer.root.add(this.shuffleLabel);
     this.renderer.root.add(this.repeatLabel);
-    this.controlsHelp.forEach(item => this.renderer.root.add(item));
+    this.renderer.root.add(this.queueTitle);
+    this.queueItems.forEach(item => this.renderer.root.add(item));
+    
+    // Initial queue display
+    this.updateQueueDisplay();
   }
 
   /**
