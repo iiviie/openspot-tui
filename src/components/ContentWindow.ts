@@ -29,6 +29,7 @@ export class ContentWindow {
   private headerText: TextRenderable;
   private items: TextRenderable[] = [];
   private selectedIndex: number = 0;
+  private scrollOffset: number = 0;
   private results: ContentItem[] = [];
   private isLoading: boolean = false;
   private statusMessage: string = "";
@@ -120,6 +121,7 @@ export class ContentWindow {
   updatePlaylists(playlists: SpotifyPlaylist[]): void {
     this.isLoading = false;
     this.selectedIndex = 0;
+    this.scrollOffset = 0;
     this.currentView = "playlists";
 
     this.results = playlists.map(playlist => ({
@@ -146,6 +148,7 @@ export class ContentWindow {
   updateTracks(tracks: SpotifyTrack[], title: string = "Tracks"): void {
     this.isLoading = false;
     this.selectedIndex = 0;
+    this.scrollOffset = 0;
     this.currentView = "tracks";
 
     this.results = tracks.map(track => ({
@@ -189,6 +192,7 @@ export class ContentWindow {
   clearResults(): void {
     this.results = [];
     this.selectedIndex = 0;
+    this.scrollOffset = 0;
     this.statusMessage = "";
     this.updateHeaderDisplay();
     this.clearItemsDisplay();
@@ -212,13 +216,10 @@ export class ContentWindow {
   }
 
   private rebuildItems(): void {
-    const maxItems = Math.min(
-      this.results.length,
-      this.layout.contentWindowHeight - 4
-    );
+    const maxVisibleItems = this.layout.contentWindowHeight - 4;
 
-    // Ensure we have enough TextRenderable items
-    while (this.items.length < maxItems) {
+    // Ensure we have enough TextRenderable items for the visible area
+    while (this.items.length < maxVisibleItems) {
       const item = new TextRenderable(this.renderer, {
         id: `content-item-${this.items.length}`,
         content: "",
@@ -231,11 +232,13 @@ export class ContentWindow {
       this.renderer.root.add(item);
     }
 
-    // Update item contents
+    // Update item contents based on scroll offset
     for (let i = 0; i < this.items.length; i++) {
-      if (i < this.results.length) {
-        const result = this.results[i];
-        const isSelected = i === this.selectedIndex;
+      const resultIndex = this.scrollOffset + i;
+      
+      if (resultIndex < this.results.length) {
+        const result = this.results[resultIndex];
+        const isSelected = resultIndex === this.selectedIndex;
         const prefix = isSelected ? "> " : "  ";
         const maxWidth = this.layout.centerWidth - 6;
 
@@ -295,6 +298,12 @@ export class ContentWindow {
   selectPrevious(): void {
     if (this.results.length > 0) {
       this.selectedIndex = Math.max(0, this.selectedIndex - 1);
+      
+      // Adjust scroll offset if selection moved above visible area
+      if (this.selectedIndex < this.scrollOffset) {
+        this.scrollOffset = this.selectedIndex;
+      }
+      
       this.rebuildItems();
     }
   }
@@ -305,6 +314,15 @@ export class ContentWindow {
   selectNext(): void {
     if (this.results.length > 0) {
       this.selectedIndex = Math.min(this.results.length - 1, this.selectedIndex + 1);
+      
+      // Adjust scroll offset if selection moved below visible area
+      const maxVisibleItems = this.layout.contentWindowHeight - 4;
+      const maxVisibleIndex = this.scrollOffset + maxVisibleItems - 1;
+      
+      if (this.selectedIndex > maxVisibleIndex) {
+        this.scrollOffset = this.selectedIndex - maxVisibleItems + 1;
+      }
+      
       this.rebuildItems();
     }
   }
