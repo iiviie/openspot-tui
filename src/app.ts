@@ -73,6 +73,13 @@ export class App {
   private previousTrackTitle: string | null = null;
   private trackEndHandled: boolean = false;
 
+  // Cooldown tracking for optimistic UI updates (prevents flickering)
+  // When user triggers a control, we set a cooldown to ignore MPRIS updates for that property
+  private readonly OPTIMISTIC_COOLDOWN_MS = 1500; // 1.5 seconds cooldown
+  private playStateCooldownUntil: number = 0;
+  private shuffleCooldownUntil: number = 0;
+  private repeatCooldownUntil: number = 0;
+
   /**
    * Initialize and start the application
    */
@@ -146,18 +153,55 @@ export class App {
     if (!this.mpris.isConnected()) return;
 
     const nowPlaying = await this.mpris.getNowPlaying();
+    const now = Date.now();
+
     if (nowPlaying) {
+      // Check cooldowns BEFORE creating the track object
+      const inPlayCooldown = now <= this.playStateCooldownUntil;
+      const inShuffleCooldown = now <= this.shuffleCooldownUntil;
+      const inRepeatCooldown = now <= this.repeatCooldownUntil;
+      
+      // Preserve the current isPlaying state if in cooldown
+      const preservedIsPlaying = this.state.isPlaying;
+      
+      // Convert track data from MPRIS
       this.state.currentTrack = this.convertToCurrentTrack(nowPlaying);
-      this.state.isPlaying = nowPlaying.isPlaying;
+      
+      // Apply cooldown logic - use cached state if in cooldown
+      if (inPlayCooldown) {
+        // Preserve our optimistic state
+        this.state.isPlaying = preservedIsPlaying;
+        if (this.state.currentTrack) {
+          this.state.currentTrack.isPlaying = preservedIsPlaying;
+        }
+      } else {
+        // Use MPRIS state
+        this.state.isPlaying = nowPlaying.isPlaying;
+        if (this.state.currentTrack) {
+          this.state.currentTrack.isPlaying = nowPlaying.isPlaying;
+        }
+      }
+      
       this.volume = Math.round(nowPlaying.volume * 100);
-      this.shuffle = nowPlaying.shuffle;
-      this.repeat = nowPlaying.loopStatus;
+      
+      // Only update shuffle if not in cooldown
+      if (!inShuffleCooldown) {
+        this.shuffle = nowPlaying.shuffle;
+      }
+      
+      // Only update repeat if not in cooldown
+      if (!inRepeatCooldown) {
+        this.repeat = nowPlaying.loopStatus;
+      }
 
       // Handle track changes and queue playback
       await this.handleTrackState(nowPlaying);
     } else {
       this.state.currentTrack = null;
-      this.state.isPlaying = false;
+      // Only update play state if not in cooldown
+      if (now > this.playStateCooldownUntil) {
+        this.state.isPlaying = false;
+      }
     }
   }
 
@@ -619,9 +663,28 @@ export class App {
   private async handlePlaybackControls(keyName: string): Promise<void> {
     if (!this.mpris.isConnected()) return;
 
+    // Track if we need a full MPRIS update (for most controls)
+    // Shuffle/repeat use optimistic updates and skip the full refresh
+    let needsFullUpdate = true;
+
     switch (keyName) {
       case "space":
+        // Optimistic update: toggle play state immediately, then send command
         await this.mpris.playPause();
+        this.state.isPlaying = !this.state.isPlaying;
+        if (this.state.currentTrack) {
+          this.state.currentTrack.isPlaying = this.state.isPlaying;
+        }
+        // Set cooldown to prevent update loop from overwriting our optimistic state
+        this.playStateCooldownUntil = Date.now() + this.OPTIMISTIC_COOLDOWN_MS;
+        this.nowPlaying.updateTrack(this.state.currentTrack);
+        this.statusSidebar.updateStatus(
+          this.state.currentTrack,
+          this.volume,
+          this.shuffle,
+          this.repeat
+        );
+        needsFullUpdate = false;
         break;
       case "n":
         // Play from queue if available, otherwise use MPRIS next
@@ -648,15 +711,37 @@ export class App {
         await this.mpris.seekBackward(SEEK_STEP_MS);
         break;
       case "s":
-        await this.mpris.toggleShuffle();
+        // Optimistic update: pass cached state, update local state immediately
+        this.shuffle = await this.mpris.toggleShuffle(this.shuffle);
+        // Set cooldown to prevent update loop from overwriting our optimistic state
+        this.shuffleCooldownUntil = Date.now() + this.OPTIMISTIC_COOLDOWN_MS;
+        this.statusSidebar.updateStatus(
+          this.state.currentTrack,
+          this.volume,
+          this.shuffle,
+          this.repeat
+        );
+        needsFullUpdate = false;
         break;
       case "r":
-        await this.mpris.cycleLoopStatus();
+        // Optimistic update: pass cached state, update local state immediately
+        this.repeat = await this.mpris.cycleLoopStatus(this.repeat as any);
+        // Set cooldown to prevent update loop from overwriting our optimistic state
+        this.repeatCooldownUntil = Date.now() + this.OPTIMISTIC_COOLDOWN_MS;
+        this.statusSidebar.updateStatus(
+          this.state.currentTrack,
+          this.volume,
+          this.shuffle,
+          this.repeat
+        );
+        needsFullUpdate = false;
         break;
     }
 
-    // Update UI immediately after control
-    await this.updateFromMpris();
+    // Update UI immediately after control (skip for optimistic updates)
+    if (needsFullUpdate) {
+      await this.updateFromMpris();
+    }
   }
 
   /**

@@ -392,21 +392,30 @@ export class MprisService {
   }
 
   /**
-   * Toggle shuffle
+   * Toggle shuffle (uses cached state for instant response)
+   * @param currentState - The current shuffle state from cache (avoids D-Bus read)
+   * @returns The new shuffle state
    */
-  async toggleShuffle(): Promise<void> {
-    const current = await this.getShuffle();
-    await this.setShuffle(!current);
+  async toggleShuffle(currentState?: boolean): Promise<boolean> {
+    // If current state is provided, skip the D-Bus read
+    const current = currentState ?? await this.getShuffle();
+    const newState = !current;
+    await this.setShuffle(newState);
+    return newState;
   }
 
   /**
    * Cycle loop status: None -> Playlist -> Track -> None
+   * @param currentStatus - The current loop status from cache (avoids D-Bus read)
+   * @returns The new loop status
    */
-  async cycleLoopStatus(): Promise<void> {
-    const current = await this.getLoopStatus();
+  async cycleLoopStatus(currentStatus?: LoopStatus): Promise<LoopStatus> {
+    // If current status is provided, skip the D-Bus read
+    const current = currentStatus ?? await this.getLoopStatus();
     const next: LoopStatus =
       current === "None" ? "Playlist" : current === "Playlist" ? "Track" : "None";
     await this.setLoopStatus(next);
+    return next;
   }
 
   /**
