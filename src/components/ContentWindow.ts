@@ -9,7 +9,6 @@ import { formatTrackDisplay } from "../data/mock";
  */
 export class ContentWindow {
   private container: BoxRenderable;
-  private title: TextRenderable;
   private items: TextRenderable[] = [];
   private selectedIndex: number = 0;
   private currentView: "tracks" | "playlists" | "albums" | "artists" = "tracks";
@@ -20,7 +19,6 @@ export class ContentWindow {
     private tracks: Track[] = []
   ) {
     this.container = this.createContainer();
-    this.title = this.createTitle();
     this.items = this.createItems();
   }
 
@@ -35,18 +33,6 @@ export class ContentWindow {
       position: "absolute",
       left: this.layout.centerX,
       top: this.layout.contentWindowY,
-    });
-  }
-
-  private createTitle(): TextRenderable {
-    const titleText = "CONTENT WINDOW";
-    return new TextRenderable(this.renderer, {
-      id: "content-title",
-      content: titleText,
-      fg: colors.textDim,
-      position: "absolute",
-      left: this.layout.centerX + Math.floor((this.layout.centerWidth - titleText.length) / 2),
-      top: this.layout.contentWindowY + Math.floor(this.layout.contentWindowHeight / 2),
     });
   }
 
@@ -117,7 +103,6 @@ export class ContentWindow {
    */
   render(): void {
     this.renderer.root.add(this.container);
-    this.renderer.root.add(this.title);
     this.items.forEach(item => this.renderer.root.add(item));
   }
 
