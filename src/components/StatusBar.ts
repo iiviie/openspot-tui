@@ -1,7 +1,6 @@
 import { BoxRenderable, TextRenderable } from "@opentui/core";
 import type { CliRenderer, LayoutDimensions, CurrentTrack } from "../types";
 import { colors } from "../config/colors";
-import { UI_STRINGS } from "../config/constants";
 
 /**
  * Status bar component at the bottom of the screen
@@ -36,9 +35,7 @@ export class StatusBar {
   }
 
   private createStatusText(): TextRenderable {
-    const content = this.track
-      ? `Playing: ${this.track.title} - ${this.track.artist || "Unknown"}`
-      : "No track playing";
+    const content = this.getStatusContent();
 
     return new TextRenderable(this.renderer, {
       id: "status-text",
@@ -50,13 +47,23 @@ export class StatusBar {
     });
   }
 
+  private getStatusContent(): string {
+    if (!this.track) {
+      return "⏹ No track playing - Select 'spotify-tui' device in Spotify";
+    }
+    const icon = this.track.isPlaying ? "▶" : "⏸";
+    return `${icon} ${this.track.title} - ${this.track.artist || "Unknown"}`;
+  }
+
   private createControls(): TextRenderable {
+    const controlsText = "Space:⏯  n:⏭  p:⏮  +/-:Vol  q:Quit";
+    
     return new TextRenderable(this.renderer, {
       id: "controls",
-      content: UI_STRINGS.controls,
+      content: controlsText,
       fg: colors.textDim,
       position: "absolute",
-      left: this.layout.termWidth - 22,
+      left: this.layout.termWidth - controlsText.length - 2,
       top: this.layout.contentHeight + 1,
     });
   }
@@ -66,7 +73,7 @@ export class StatusBar {
    */
   updateTrack(track: CurrentTrack | null): void {
     this.track = track;
-    // Update status text...
+    (this.statusText as any).content = this.getStatusContent();
   }
 
   /**

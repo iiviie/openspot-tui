@@ -13,8 +13,10 @@ export class NowPlaying {
   private trackInfo: TextRenderable;
   private progressBar: TextRenderable;
   private timeDisplay: TextRenderable;
+  private playingStatus: TextRenderable;
 
   private readonly mainContentLeft: number;
+  private readonly barWidth: number;
 
   constructor(
     private renderer: CliRenderer,
@@ -22,9 +24,11 @@ export class NowPlaying {
     private track: CurrentTrack | null
   ) {
     this.mainContentLeft = layout.sidebarWidth + 2;
+    this.barWidth = Math.max(20, this.layout.mainWidth - 25);
     
     this.container = this.createContainer();
     this.header = this.createHeader();
+    this.playingStatus = this.createPlayingStatus();
     this.trackTitle = this.createTrackTitle();
     this.trackInfo = this.createTrackInfo();
     this.progressBar = this.createProgressBar();
@@ -56,9 +60,21 @@ export class NowPlaying {
     });
   }
 
+  private createPlayingStatus(): TextRenderable {
+    const icon = this.track?.isPlaying ? "▶" : "⏸";
+    return new TextRenderable(this.renderer, {
+      id: "playing-status",
+      content: icon,
+      fg: colors.accent,
+      position: "absolute",
+      left: this.mainContentLeft,
+      top: 3,
+    });
+  }
+
   private createTrackTitle(): TextRenderable {
     const content = this.track 
-      ? `Track: ${this.track.title}` 
+      ? this.track.title 
       : UI_STRINGS.noTrack;
     
     return new TextRenderable(this.renderer, {
@@ -66,14 +82,14 @@ export class NowPlaying {
       content,
       fg: colors.textPrimary,
       position: "absolute",
-      left: this.mainContentLeft,
+      left: this.mainContentLeft + 2,
       top: 3,
     });
   }
 
   private createTrackInfo(): TextRenderable {
     const content = this.track
-      ? `Artist: ${this.track.artist || "Unknown"} | Album: ${this.track.album || "Unknown"}`
+      ? `${this.track.artist || "Unknown"} • ${this.track.album || "Unknown"}`
       : "";
     
     return new TextRenderable(this.renderer, {
@@ -81,14 +97,13 @@ export class NowPlaying {
       content,
       fg: colors.textSecondary,
       position: "absolute",
-      left: this.mainContentLeft,
+      left: this.mainContentLeft + 2,
       top: 4,
     });
   }
 
   private createProgressBar(): TextRenderable {
-    const barWidth = Math.max(20, this.layout.mainWidth - 20);
-    const content = this.formatProgressBar(barWidth, this.track?.progress || 0);
+    const content = this.formatProgressBar(this.track?.progress || 0);
     
     return new TextRenderable(this.renderer, {
       id: "progress-bar",
@@ -101,7 +116,6 @@ export class NowPlaying {
   }
 
   private createTimeDisplay(): TextRenderable {
-    const barWidth = Math.max(20, this.layout.mainWidth - 20);
     const content = this.track
       ? `${this.track.currentTime} / ${this.track.totalTime}`
       : "0:00 / 0:00";
@@ -111,22 +125,45 @@ export class NowPlaying {
       content,
       fg: colors.textDim,
       position: "absolute",
-      left: this.mainContentLeft + barWidth + 3,
+      left: this.mainContentLeft + this.barWidth + 3,
       top: 6,
     });
   }
 
-  private formatProgressBar(width: number, progress: number): string {
-    const filled = Math.floor(width * progress);
-    return `[${"=".repeat(filled)}${"-".repeat(width - filled)}]`;
+  private formatProgressBar(progress: number): string {
+    const filled = Math.floor(this.barWidth * progress);
+    const empty = this.barWidth - filled;
+    return `[${"█".repeat(filled)}${"░".repeat(empty)}]`;
   }
 
   /**
-   * Update the current track
+   * Update the current track and refresh display
    */
   updateTrack(track: CurrentTrack | null): void {
     this.track = track;
-    // Update UI elements...
+    
+    // Update playing status
+    const icon = this.track?.isPlaying ? "▶" : "⏸";
+    (this.playingStatus as any).content = icon;
+
+    // Update track title
+    const title = this.track ? this.track.title : UI_STRINGS.noTrack;
+    (this.trackTitle as any).content = title;
+
+    // Update track info
+    const info = this.track
+      ? `${this.track.artist || "Unknown"} • ${this.track.album || "Unknown"}`
+      : "";
+    (this.trackInfo as any).content = info;
+
+    // Update progress bar
+    (this.progressBar as any).content = this.formatProgressBar(this.track?.progress || 0);
+
+    // Update time display
+    const time = this.track
+      ? `${this.track.currentTime} / ${this.track.totalTime}`
+      : "0:00 / 0:00";
+    (this.timeDisplay as any).content = time;
   }
 
   /**
@@ -135,6 +172,7 @@ export class NowPlaying {
   render(): void {
     this.renderer.root.add(this.container);
     this.renderer.root.add(this.header);
+    this.renderer.root.add(this.playingStatus);
     this.renderer.root.add(this.trackTitle);
     this.renderer.root.add(this.trackInfo);
     this.renderer.root.add(this.progressBar);

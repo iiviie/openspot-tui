@@ -1,9 +1,11 @@
 import { createCliRenderer, ConsolePosition } from "@opentui/core";
-import type { CliRenderer, AppState, KeyEvent, LayoutDimensions } from "./types";
+import type { CliRenderer, AppState, KeyEvent, LayoutDimensions, CurrentTrack } from "./types";
+import type { NowPlayingInfo } from "./types/mpris";
 import { Sidebar, NowPlaying, Queue, StatusBar } from "./components";
 import { cleanupTerminal, calculateLayout } from "./utils";
-import { mockCurrentTrack, mockQueue } from "./data/mock";
+import { mockQueue } from "./data/mock";
 import { KEY_BINDINGS } from "./config";
+import { getMprisService, MprisService } from "./services";
 
 /**
  * Main application class
@@ -12,6 +14,8 @@ import { KEY_BINDINGS } from "./config";
 export class App {
   private renderer!: CliRenderer;
   private layout!: LayoutDimensions;
+  private mpris!: MprisService;
+  private updateInterval: Timer | null = null;
   
   // Components
   private sidebar!: Sidebar;
@@ -22,22 +26,37 @@ export class App {
   // Application state
   private state: AppState = {
     selectedMenuIndex: 0,
-    currentTrack: mockCurrentTrack,
+    currentTrack: null,
     queue: mockQueue,
-    isPlaying: true,
+    isPlaying: false,
   };
 
   /**
    * Initialize and start the application
    */
   async start(): Promise<void> {
+    await this.initializeMpris();
     await this.initialize();
     this.setupComponents();
     this.render();
     this.setupInputHandlers();
     this.setupSignalHandlers();
+    this.startUpdateLoop();
     
-    console.log("Use arrow keys or j/k to navigate, Enter to select, q to quit");
+    console.log("Controls: Space=Play/Pause, n/p=Next/Prev, +/-=Volume, q=Quit");
+  }
+
+  /**
+   * Initialize MPRIS connection to spotifyd
+   */
+  private async initializeMpris(): Promise<void> {
+    this.mpris = getMprisService();
+    const connected = await this.mpris.connect();
+    
+    if (!connected) {
+      console.log("Warning: Could not connect to spotifyd. Make sure it's running.");
+      console.log("Run: spotifyd --no-daemon");
+    }
   }
 
   /**
@@ -53,6 +72,50 @@ export class App {
     });
 
     this.layout = calculateLayout();
+    
+    // Get initial state from MPRIS
+    await this.updateFromMpris();
+  }
+
+  /**
+   * Update state from MPRIS
+   */
+  private async updateFromMpris(): Promise<void> {
+    if (!this.mpris.isConnected()) return;
+
+    const nowPlaying = await this.mpris.getNowPlaying();
+    if (nowPlaying) {
+      this.state.currentTrack = this.convertToCurrentTrack(nowPlaying);
+      this.state.isPlaying = nowPlaying.isPlaying;
+    } else {
+      this.state.currentTrack = null;
+      this.state.isPlaying = false;
+    }
+  }
+
+  /**
+   * Convert MPRIS NowPlayingInfo to CurrentTrack
+   */
+  private convertToCurrentTrack(info: NowPlayingInfo): CurrentTrack {
+    return {
+      title: info.title,
+      artist: info.artist,
+      album: info.album,
+      currentTime: this.formatTime(info.positionMs),
+      totalTime: this.formatTime(info.durationMs),
+      progress: info.durationMs > 0 ? info.positionMs / info.durationMs : 0,
+      isPlaying: info.isPlaying,
+    };
+  }
+
+  /**
+   * Format milliseconds to mm:ss
+   */
+  private formatTime(ms: number): string {
+    const totalSeconds = Math.floor(ms / 1000);
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return `${minutes}:${seconds.toString().padStart(2, "0")}`;
   }
 
   /**
@@ -73,6 +136,18 @@ export class App {
     this.nowPlaying.render();
     this.queue.render();
     this.statusBar.render();
+  }
+
+  /**
+   * Start the update loop to refresh now playing info
+   */
+  private startUpdateLoop(): void {
+    this.updateInterval = setInterval(async () => {
+      await this.updateFromMpris();
+      // Re-render components with new data
+      this.nowPlaying.updateTrack(this.state.currentTrack);
+      this.statusBar.updateTrack(this.state.currentTrack);
+    }, 1000); // Update every second
   }
 
   /**
@@ -118,6 +193,50 @@ export class App {
       console.log(`Selected: ${selected.label}`);
       return;
     }
+
+    // Playback controls
+    this.handlePlaybackControls(keyName);
+  }
+
+  /**
+   * Handle playback-related key presses
+   */
+  private async handlePlaybackControls(keyName: string): Promise<void> {
+    if (!this.mpris.isConnected()) return;
+
+    switch (keyName) {
+      case "space":
+        await this.mpris.playPause();
+        break;
+      case "n":
+        await this.mpris.next();
+        break;
+      case "p":
+        await this.mpris.previous();
+        break;
+      case "equal": // + key (shift not needed on some keyboards)
+      case "plus":
+        await this.mpris.volumeUp();
+        break;
+      case "minus":
+        await this.mpris.volumeDown();
+        break;
+      case "right":
+        await this.mpris.seekForward(5000); // 5 seconds
+        break;
+      case "left":
+        await this.mpris.seekBackward(5000); // 5 seconds
+        break;
+      case "s":
+        await this.mpris.toggleShuffle();
+        break;
+      case "r":
+        await this.mpris.cycleLoopStatus();
+        break;
+    }
+
+    // Update UI immediately after control
+    await this.updateFromMpris();
   }
 
   /**
@@ -142,6 +261,14 @@ export class App {
    * Cleanup resources
    */
   private cleanup(): void {
+    // Stop update loop
+    if (this.updateInterval) {
+      clearInterval(this.updateInterval);
+    }
+
+    // Disconnect MPRIS
+    this.mpris?.disconnect();
+
     // Try to stop/destroy renderer
     try {
       if (typeof (this.renderer as any).stop === "function") {
