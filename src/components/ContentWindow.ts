@@ -1,34 +1,42 @@
 import { BoxRenderable, TextRenderable } from "@opentui/core";
 import type { CliRenderer, LayoutDimensions } from "../types";
-import type { SpotifyTrack } from "../types/spotify";
+import type { SpotifyTrack, SpotifyPlaylist } from "../types/spotify";
 import { colors } from "../config/colors";
 
 /**
- * Search result item for display
+ * Content item types
  */
-export interface SearchResultItem {
+export interface ContentItem {
+  id: string;
   uri: string;
   title: string;
-  artist: string;
-  album: string;
-  duration: string;
+  subtitle: string;
+  type: "track" | "playlist" | "album" | "artist";
 }
 
 /**
+ * Content view types
+ */
+export type ContentView = "playlists" | "tracks" | "search" | "playlist-tracks";
+
+/**
  * Content window component - main center area below search bar
- * Displays search results, playlists, albums, tracks, etc.
+ * Displays playlists, search results, tracks, etc.
  */
 export class ContentWindow {
   private container: BoxRenderable;
   private headerText: TextRenderable;
   private items: TextRenderable[] = [];
   private selectedIndex: number = 0;
-  private results: SearchResultItem[] = [];
+  private results: ContentItem[] = [];
   private isLoading: boolean = false;
   private statusMessage: string = "";
+  private currentView: ContentView = "playlists";
+  private isFocused: boolean = false;
 
-  // Callback when a track is selected for playback
+  // Callbacks
   public onTrackSelect: ((uri: string) => void) | null = null;
+  public onPlaylistSelect: ((playlistId: string, playlistName: string) => void) | null = null;
 
   constructor(
     private renderer: CliRenderer,
@@ -45,7 +53,7 @@ export class ContentWindow {
       height: this.layout.contentWindowHeight,
       backgroundColor: colors.bg,
       borderStyle: "single",
-      borderColor: colors.border,
+      borderColor: this.isFocused ? colors.accent : colors.border,
       position: "absolute",
       left: this.layout.centerX,
       top: this.layout.contentWindowY,
@@ -64,19 +72,34 @@ export class ContentWindow {
   }
 
   /**
+   * Set focus state (highlights border)
+   */
+  setFocused(focused: boolean): void {
+    this.isFocused = focused;
+    (this.container as any).borderColor = focused ? colors.accent : colors.border;
+  }
+
+  /**
+   * Check if focused
+   */
+  hasFocus(): boolean {
+    return this.isFocused;
+  }
+
+  /**
    * Show loading state
    */
-  setLoading(loading: boolean): void {
+  setLoading(loading: boolean, message: string = "Loading..."): void {
     this.isLoading = loading;
     if (loading) {
-      this.statusMessage = "Searching...";
+      this.statusMessage = message;
       this.updateHeaderDisplay();
-      this.clearItems();
+      this.clearItemsDisplay();
     }
   }
 
   /**
-   * Set a status message (error, no results, etc.)
+   * Set a status message
    */
   setStatus(message: string): void {
     this.statusMessage = message;
@@ -84,28 +107,78 @@ export class ContentWindow {
   }
 
   /**
-   * Update search results from Spotify tracks
+   * Get current view type
    */
-  updateResults(tracks: SpotifyTrack[]): void {
+  getCurrentView(): ContentView {
+    return this.currentView;
+  }
+
+  /**
+   * Update with playlists
+   */
+  updatePlaylists(playlists: SpotifyPlaylist[]): void {
     this.isLoading = false;
     this.selectedIndex = 0;
-    
-    this.results = tracks.map(track => ({
-      uri: track.uri,
-      title: track.name,
-      artist: track.artists.map(a => a.name).join(", "),
-      album: track.album.name,
-      duration: this.formatDuration(track.duration_ms),
+    this.currentView = "playlists";
+
+    this.results = playlists.map(playlist => ({
+      id: playlist.id,
+      uri: playlist.uri,
+      title: playlist.name,
+      subtitle: `${playlist.tracks.total} tracks`,
+      type: "playlist" as const,
     }));
 
     if (this.results.length === 0) {
-      this.statusMessage = "No results found";
+      this.statusMessage = "No playlists found";
     } else {
-      this.statusMessage = `Found ${this.results.length} tracks`;
+      this.statusMessage = `Your Playlists (${this.results.length})`;
     }
 
     this.updateHeaderDisplay();
     this.rebuildItems();
+  }
+
+  /**
+   * Update with tracks (search results or playlist tracks)
+   */
+  updateTracks(tracks: SpotifyTrack[], title: string = "Tracks"): void {
+    this.isLoading = false;
+    this.selectedIndex = 0;
+    this.currentView = "tracks";
+
+    this.results = tracks.map(track => ({
+      id: track.id,
+      uri: track.uri,
+      title: track.name,
+      subtitle: `${track.artists.map(a => a.name).join(", ")} - ${this.formatDuration(track.duration_ms)}`,
+      type: "track" as const,
+    }));
+
+    if (this.results.length === 0) {
+      this.statusMessage = "No tracks found";
+    } else {
+      this.statusMessage = `${title} (${this.results.length})`;
+    }
+
+    this.updateHeaderDisplay();
+    this.rebuildItems();
+  }
+
+  /**
+   * Update with search results
+   */
+  updateSearchResults(tracks: SpotifyTrack[]): void {
+    this.currentView = "search";
+    this.updateTracks(tracks, "Search Results");
+  }
+
+  /**
+   * Update with playlist tracks
+   */
+  updatePlaylistTracks(tracks: SpotifyTrack[], playlistName: string): void {
+    this.currentView = "playlist-tracks";
+    this.updateTracks(tracks, playlistName);
   }
 
   /**
@@ -116,7 +189,7 @@ export class ContentWindow {
     this.selectedIndex = 0;
     this.statusMessage = "";
     this.updateHeaderDisplay();
-    this.clearItems();
+    this.clearItemsDisplay();
   }
 
   private formatDuration(ms: number): string {
@@ -130,15 +203,13 @@ export class ContentWindow {
     (this.headerText as any).content = this.statusMessage;
   }
 
-  private clearItems(): void {
-    // Clear existing items by setting empty content
-    this.items.forEach((item, index) => {
+  private clearItemsDisplay(): void {
+    this.items.forEach(item => {
       (item as any).content = "";
     });
   }
 
   private rebuildItems(): void {
-    // Calculate how many items can fit
     const maxItems = Math.min(
       this.results.length,
       this.layout.contentWindowHeight - 4
@@ -165,16 +236,19 @@ export class ContentWindow {
         const isSelected = i === this.selectedIndex;
         const prefix = isSelected ? "> " : "  ";
         const maxWidth = this.layout.centerWidth - 6;
-        
-        // Format: > Title - Artist (Duration)
-        let content = `${prefix}${result.title} - ${result.artist}`;
-        const duration = ` [${result.duration}]`;
-        
-        // Truncate if needed
-        if (content.length + duration.length > maxWidth) {
-          content = content.substring(0, maxWidth - duration.length - 3) + "...";
+
+        // Format based on type
+        let content: string;
+        if (result.type === "playlist") {
+          content = `${prefix}${result.title} (${result.subtitle})`;
+        } else {
+          content = `${prefix}${result.title} - ${result.subtitle}`;
         }
-        content += duration;
+
+        // Truncate if needed
+        if (content.length > maxWidth) {
+          content = content.substring(0, maxWidth - 3) + "...";
+        }
 
         (this.items[i] as any).content = content;
         (this.items[i] as any).fg = isSelected ? colors.textPrimary : colors.textSecondary;
@@ -205,19 +279,23 @@ export class ContentWindow {
   }
 
   /**
-   * Get currently selected result
+   * Get currently selected item
    */
-  getSelectedResult(): SearchResultItem | null {
+  getSelectedItem(): ContentItem | null {
     if (this.results.length === 0) return null;
     return this.results[this.selectedIndex];
   }
 
   /**
-   * Select current item (trigger playback)
+   * Select current item (trigger appropriate action)
    */
   selectCurrent(): void {
-    const selected = this.getSelectedResult();
-    if (selected && this.onTrackSelect) {
+    const selected = this.getSelectedItem();
+    if (!selected) return;
+
+    if (selected.type === "playlist" && this.onPlaylistSelect) {
+      this.onPlaylistSelect(selected.id, selected.title);
+    } else if (selected.type === "track" && this.onTrackSelect) {
       this.onTrackSelect(selected.uri);
     }
   }
@@ -235,7 +313,6 @@ export class ContentWindow {
   render(): void {
     this.renderer.root.add(this.container);
     this.renderer.root.add(this.headerText);
-    // Items are added dynamically in rebuildItems
   }
 
   /**

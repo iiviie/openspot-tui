@@ -1,11 +1,16 @@
 import { createCliRenderer, ConsolePosition } from "@opentui/core";
-import type { CliRenderer, AppState, KeyEvent, LayoutDimensions, CurrentTrack } from "./types";
+import type { CliRenderer, AppState, KeyEvent, LayoutDimensions, CurrentTrack, MenuItem } from "./types";
 import type { NowPlayingInfo } from "./types/mpris";
 import { Sidebar, NowPlaying, SearchBar, ContentWindow, StatusSidebar } from "./components";
 import { cleanupTerminal, calculateLayout } from "./utils";
 import { mockQueue } from "./data/mock";
 import { KEY_BINDINGS } from "./config";
 import { getMprisService, MprisService, getSpotifyApiService, SpotifyApiService } from "./services";
+
+/**
+ * Focus panel type
+ */
+type FocusPanel = "library" | "content";
 
 /**
  * Main application class
@@ -21,6 +26,14 @@ import { getMprisService, MprisService, getSpotifyApiService, SpotifyApiService 
  * +----------+---------------------------+----------+
  * |              NOW PLAYING                        |
  * +-------------------------------------------------+
+ * 
+ * Navigation:
+ * - h: Focus library (left)
+ * - l: Focus content (right)
+ * - j/k: Navigate within focused panel
+ * - /: Search
+ * - Enter: Select
+ * - Escape: Go back
  */
 export class App {
   private renderer!: CliRenderer;
@@ -29,7 +42,7 @@ export class App {
   private spotifyApi!: SpotifyApiService;
   private updateInterval: Timer | null = null;
   
-  // Components - new layout
+  // Components
   private sidebar!: Sidebar;
   private searchBar!: SearchBar;
   private contentWindow!: ContentWindow;
@@ -49,8 +62,12 @@ export class App {
   private shuffle: boolean = false;
   private repeat: string = "None";
 
-  // Input mode
-  private inputMode: "normal" | "search" | "results" = "normal";
+  // Focus and input mode
+  private focusedPanel: FocusPanel = "content";
+  private inputMode: "normal" | "search" = "normal";
+  
+  // Navigation stack for back functionality
+  private viewStack: string[] = ["playlists"];
 
   /**
    * Initialize and start the application
@@ -64,6 +81,9 @@ export class App {
     this.setupInputHandlers();
     this.setupSignalHandlers();
     this.startUpdateLoop();
+    
+    // Load playlists as default view
+    await this.loadPlaylists();
   }
 
   /**
@@ -154,6 +174,7 @@ export class App {
   private setupComponents(): void {
     // Left sidebar - Library navigation
     this.sidebar = new Sidebar(this.renderer, this.layout);
+    this.sidebar.onSelect = (item) => this.handleLibrarySelect(item);
     
     // Center top - Search bar
     this.searchBar = new SearchBar(this.renderer, this.layout);
@@ -162,6 +183,7 @@ export class App {
     // Center main - Content window
     this.contentWindow = new ContentWindow(this.renderer, this.layout);
     this.contentWindow.onTrackSelect = (uri) => this.handlePlayTrack(uri);
+    this.contentWindow.onPlaylistSelect = (id, name) => this.handlePlaylistSelect(id, name);
     
     // Right sidebar - Status
     this.statusSidebar = new StatusSidebar(
@@ -175,18 +197,110 @@ export class App {
     
     // Bottom bar - Now playing
     this.nowPlaying = new NowPlaying(this.renderer, this.layout, this.state.currentTrack);
+
+    // Set initial focus
+    this.updateFocus();
+  }
+
+  /**
+   * Update visual focus indicators
+   */
+  private updateFocus(): void {
+    this.sidebar.setFocused(this.focusedPanel === "library");
+    this.contentWindow.setFocused(this.focusedPanel === "content");
+  }
+
+  /**
+   * Load user's playlists
+   */
+  private async loadPlaylists(): Promise<void> {
+    this.contentWindow.setLoading(true, "Loading playlists...");
+    
+    try {
+      const response = await this.spotifyApi.getPlaylists(50);
+      this.contentWindow.updatePlaylists(response.items);
+      this.viewStack = ["playlists"];
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to load playlists";
+      this.contentWindow.setStatus(`Error: ${message}`);
+    }
+  }
+
+  /**
+   * Handle library menu selection
+   */
+  private async handleLibrarySelect(item: MenuItem): Promise<void> {
+    switch (item.id) {
+      case "playlists":
+        await this.loadPlaylists();
+        break;
+      case "songs":
+        await this.loadSavedTracks();
+        break;
+      case "albums":
+        // TODO: Implement albums
+        this.contentWindow.setStatus("Albums - Coming soon");
+        break;
+      case "artists":
+        // TODO: Implement artists
+        this.contentWindow.setStatus("Artists - Coming soon");
+        break;
+    }
+    
+    // Move focus to content after selecting from library
+    this.focusedPanel = "content";
+    this.updateFocus();
+  }
+
+  /**
+   * Load saved tracks
+   */
+  private async loadSavedTracks(): Promise<void> {
+    this.contentWindow.setLoading(true, "Loading saved tracks...");
+    
+    try {
+      const response = await this.spotifyApi.getSavedTracks(50);
+      const tracks = response.items.map(item => item.track);
+      this.contentWindow.updateTracks(tracks, "Liked Songs");
+      this.viewStack = ["songs"];
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to load tracks";
+      this.contentWindow.setStatus(`Error: ${message}`);
+    }
+  }
+
+  /**
+   * Handle playlist selection - load its tracks
+   */
+  private async handlePlaylistSelect(playlistId: string, playlistName: string): Promise<void> {
+    this.contentWindow.setLoading(true, `Loading ${playlistName}...`);
+    
+    try {
+      const response = await this.spotifyApi.getPlaylistTracks(playlistId, 100);
+      const tracks = response.items
+        .filter(item => item.track !== null)
+        .map(item => item.track!);
+      
+      this.contentWindow.updatePlaylistTracks(tracks, playlistName);
+      this.viewStack.push(`playlist:${playlistId}`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to load playlist";
+      this.contentWindow.setStatus(`Error: ${message}`);
+    }
   }
 
   /**
    * Handle search query
    */
   private async handleSearch(query: string): Promise<void> {
-    this.contentWindow.setLoading(true);
-    this.inputMode = "results";
+    this.contentWindow.setLoading(true, "Searching...");
+    this.focusedPanel = "content";
+    this.updateFocus();
 
     try {
-      const tracks = await this.spotifyApi.searchTracks(query, 15);
-      this.contentWindow.updateResults(tracks);
+      const tracks = await this.spotifyApi.searchTracks(query, 20);
+      this.contentWindow.updateSearchResults(tracks);
+      this.viewStack.push(`search:${query}`);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Search failed";
       this.contentWindow.setStatus(`Error: ${message}`);
@@ -203,6 +317,30 @@ export class App {
       setTimeout(() => this.updateFromMpris(), 500);
     } catch (error) {
       console.error("Failed to play track:", error);
+    }
+  }
+
+  /**
+   * Go back in navigation
+   */
+  private async goBack(): Promise<void> {
+    if (this.viewStack.length <= 1) {
+      // Already at root, just reload playlists
+      await this.loadPlaylists();
+      return;
+    }
+
+    this.viewStack.pop();
+    const previousView = this.viewStack[this.viewStack.length - 1];
+
+    if (previousView === "playlists") {
+      await this.loadPlaylists();
+    } else if (previousView === "songs") {
+      await this.loadSavedTracks();
+    } else if (previousView.startsWith("playlist:")) {
+      // Go back to playlists list instead of previous playlist
+      await this.loadPlaylists();
+      this.viewStack = ["playlists"];
     }
   }
 
@@ -247,16 +385,10 @@ export class App {
    * Handle keyboard input based on current mode
    */
   private handleKeyPress(key: KeyEvent): void {
-    // Handle based on input mode
-    switch (this.inputMode) {
-      case "search":
-        this.handleSearchModeInput(key);
-        break;
-      case "results":
-        this.handleResultsModeInput(key);
-        break;
-      default:
-        this.handleNormalModeInput(key);
+    if (this.inputMode === "search") {
+      this.handleSearchModeInput(key);
+    } else {
+      this.handleNormalModeInput(key);
     }
   }
 
@@ -284,21 +416,51 @@ export class App {
       return;
     }
 
-    // Navigation in sidebar
+    // Panel navigation with h/l
+    if (keyName === "h") {
+      this.focusedPanel = "library";
+      this.updateFocus();
+      return;
+    }
+
+    if (keyName === "l") {
+      this.focusedPanel = "content";
+      this.updateFocus();
+      return;
+    }
+
+    // Escape to go back
+    if (keyName === "escape") {
+      this.goBack();
+      return;
+    }
+
+    // Navigation within focused panel
     if ((KEY_BINDINGS.up as readonly string[]).includes(keyName)) {
-      this.sidebar.selectPrevious();
+      if (this.focusedPanel === "library") {
+        this.sidebar.selectPrevious();
+      } else {
+        this.contentWindow.selectPrevious();
+      }
       return;
     }
 
     if ((KEY_BINDINGS.down as readonly string[]).includes(keyName)) {
-      this.sidebar.selectNext();
+      if (this.focusedPanel === "library") {
+        this.sidebar.selectNext();
+      } else {
+        this.contentWindow.selectNext();
+      }
       return;
     }
 
-    // Selection
+    // Selection with Enter
     if ((KEY_BINDINGS.select as readonly string[]).includes(keyName)) {
-      const selected = this.sidebar.getSelectedItem();
-      console.log(`Selected: ${selected.label}`);
+      if (this.focusedPanel === "library") {
+        this.sidebar.selectCurrent();
+      } else {
+        this.contentWindow.selectCurrent();
+      }
       return;
     }
 
@@ -322,6 +484,7 @@ export class App {
     // Enter to submit
     if (keyName === "return" || keyName === "enter") {
       this.searchBar.handleEnter();
+      this.inputMode = "normal";
       return;
     }
 
@@ -341,60 +504,6 @@ export class App {
   }
 
   /**
-   * Handle input in results mode (navigating search results)
-   */
-  private handleResultsModeInput(key: KeyEvent): void {
-    const keyName = key.name;
-
-    // Quit
-    if (key.ctrl && keyName === "c") {
-      this.exit();
-      return;
-    }
-
-    if ((KEY_BINDINGS.quit as readonly string[]).includes(keyName)) {
-      this.exit();
-      return;
-    }
-
-    // Escape to go back to normal mode
-    if (keyName === "escape") {
-      this.contentWindow.clearResults();
-      this.searchBar.clear();
-      this.inputMode = "normal";
-      return;
-    }
-
-    // New search with /
-    if (keyName === "/" || keyName === "slash") {
-      this.inputMode = "search";
-      this.searchBar.clear();
-      this.searchBar.activate();
-      return;
-    }
-
-    // Navigate results
-    if ((KEY_BINDINGS.up as readonly string[]).includes(keyName)) {
-      this.contentWindow.selectPrevious();
-      return;
-    }
-
-    if ((KEY_BINDINGS.down as readonly string[]).includes(keyName)) {
-      this.contentWindow.selectNext();
-      return;
-    }
-
-    // Select and play
-    if ((KEY_BINDINGS.select as readonly string[]).includes(keyName)) {
-      this.contentWindow.selectCurrent();
-      return;
-    }
-
-    // Playback controls still work in results mode
-    this.handlePlaybackControls(keyName);
-  }
-
-  /**
    * Handle playback-related key presses
    */
   private async handlePlaybackControls(keyName: string): Promise<void> {
@@ -410,7 +519,7 @@ export class App {
       case "p":
         await this.mpris.previous();
         break;
-      case "equal": // + key (shift not needed on some keyboards)
+      case "equal": // + key
       case "plus":
         await this.mpris.volumeUp();
         break;
@@ -418,10 +527,10 @@ export class App {
         await this.mpris.volumeDown();
         break;
       case "right":
-        await this.mpris.seekForward(5000); // 5 seconds
+        await this.mpris.seekForward(5000);
         break;
       case "left":
-        await this.mpris.seekBackward(5000); // 5 seconds
+        await this.mpris.seekBackward(5000);
         break;
       case "s":
         await this.mpris.toggleShuffle();

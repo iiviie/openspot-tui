@@ -12,6 +12,10 @@ export class Sidebar {
   private menuItems: TextRenderable[] = [];
   private selectedIndex: number = 0;
   private readonly items: MenuItem[];
+  private isFocused: boolean = false;
+
+  // Callback when menu item is selected
+  public onSelect: ((item: MenuItem) => void) | null = null;
 
   constructor(
     private renderer: CliRenderer,
@@ -31,7 +35,7 @@ export class Sidebar {
       height: this.layout.leftSidebarHeight,
       backgroundColor: colors.bg,
       borderStyle: "single",
-      borderColor: colors.border,
+      borderColor: this.isFocused ? colors.accent : colors.border,
       position: "absolute",
       left: this.layout.leftSidebarX,
       top: this.layout.leftSidebarY,
@@ -68,6 +72,21 @@ export class Sidebar {
   }
 
   /**
+   * Set focus state (highlights border)
+   */
+  setFocused(focused: boolean): void {
+    this.isFocused = focused;
+    (this.container as any).borderColor = focused ? colors.accent : colors.border;
+  }
+
+  /**
+   * Check if focused
+   */
+  hasFocus(): boolean {
+    return this.isFocused;
+  }
+
+  /**
    * Move selection up
    */
   selectPrevious(): void {
@@ -97,14 +116,23 @@ export class Sidebar {
     return this.selectedIndex;
   }
 
+  /**
+   * Trigger selection of current item
+   */
+  selectCurrent(): void {
+    const item = this.getSelectedItem();
+    if (this.onSelect) {
+      this.onSelect(item);
+    }
+  }
+
   private updateMenuDisplay(): void {
     this.menuItems.forEach((item, index) => {
       const isSelected = index === this.selectedIndex;
       const menuItem = this.items[index];
       
-      // Update content and color using any cast (OpenTUI API limitation)
-      (item as any).setContent?.(this.formatMenuItem(menuItem.label, isSelected));
-      (item as any).setFg?.(isSelected ? colors.textPrimary : colors.textSecondary);
+      (item as any).content = this.formatMenuItem(menuItem.label, isSelected);
+      (item as any).fg = isSelected ? colors.textPrimary : colors.textSecondary;
     });
   }
 
