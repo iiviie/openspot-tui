@@ -69,7 +69,7 @@ export class App {
   // Navigation stack for back functionality
   private viewStack: string[] = ["songs"];
 
-  // Track end detection for queue management
+  // Track change detection for syncing visual queue and queue playback
   private previousTrackTitle: string | null = null;
   private trackEndHandled: boolean = false;
 
@@ -142,8 +142,8 @@ export class App {
       this.shuffle = nowPlaying.shuffle;
       this.repeat = nowPlaying.loopStatus;
 
-      // Check for track end to handle queue
-      await this.checkTrackEnd(nowPlaying);
+      // Handle track changes and queue playback
+      await this.handleTrackState(nowPlaying);
     } else {
       this.state.currentTrack = null;
       this.state.isPlaying = false;
@@ -151,20 +151,30 @@ export class App {
   }
 
   /**
-   * Check if track is about to end and handle queue playback
+   * Handle track state changes - sync visual queue and trigger queue playback
    */
-  private async checkTrackEnd(nowPlaying: NowPlayingInfo): Promise<void> {
+  private async handleTrackState(nowPlaying: NowPlayingInfo): Promise<void> {
+    // Skip if statusSidebar not yet initialized
+    if (!this.statusSidebar) return;
+
     const currentTitle = nowPlaying.title;
     const positionMs = nowPlaying.positionMs;
     const durationMs = nowPlaying.durationMs;
-    
-    // Track changed - reset handled flag
+
+    // Track changed - reset handled flag and sync visual queue
     if (currentTitle !== this.previousTrackTitle) {
       this.trackEndHandled = false;
       this.previousTrackTitle = currentTitle;
+      
+      // Check if the now playing track is the first item in our visual queue
+      const queuePeek = this.statusSidebar.peekQueue();
+      if (queuePeek && queuePeek.title === currentTitle) {
+        // The queued track is now playing, remove it from visual queue
+        this.statusSidebar.dequeue();
+      }
     }
 
-    // Skip if repeat track is enabled (let spotifyd handle it)
+    // Skip queue playback logic if repeat track is enabled
     if (this.repeat === "Track") {
       return;
     }
@@ -173,7 +183,7 @@ export class App {
     const timeRemaining = durationMs - positionMs;
     const isAboutToEnd = timeRemaining > 0 && timeRemaining < 2000 && durationMs > 0;
 
-    // If track is about to end and we haven't handled it yet
+    // If track is about to end and we have queued items, play next from queue
     if (isAboutToEnd && !this.trackEndHandled && this.statusSidebar.hasQueuedItems()) {
       this.trackEndHandled = true;
       await this.playNextFromQueue();
@@ -189,7 +199,8 @@ export class App {
       try {
         await this.spotifyApi.playTrack(nextTrack.uri);
       } catch (error) {
-        console.error("Failed to play queued track:", error);
+        // Failed to play, re-add to queue
+        this.statusSidebar.addToQueue(nextTrack);
       }
     }
   }
@@ -372,20 +383,29 @@ export class App {
   }
 
   /**
-   * Add selected track to the queue
+   * Add selected track to the queue (both Spotify's native queue and visual queue)
    */
-  private addSelectedToQueue(): void {
+  private async addSelectedToQueue(): Promise<void> {
     // Only works when content panel is focused and showing tracks
     if (this.focusedPanel !== "content") return;
     
     const selected = this.contentWindow.getSelectedItem();
     if (!selected || selected.type !== "track") return;
 
+    // Always add to visual queue for display
     this.statusSidebar.addToQueue({
       uri: selected.uri,
       title: selected.title,
       artist: selected.subtitle,
     });
+
+    // Try to add to Spotify's native queue (requires active playback)
+    try {
+      await this.spotifyApi.addToQueue(selected.uri);
+    } catch (error) {
+      // Spotify API failed (likely no active playback)
+      // Our custom queue logic will handle playback instead
+    }
   }
 
   /**
@@ -589,7 +609,7 @@ export class App {
         break;
       case "n":
         // Play from queue if available, otherwise use MPRIS next
-        if (this.statusSidebar.hasQueuedItems()) {
+        if (this.statusSidebar?.hasQueuedItems()) {
           await this.playNextFromQueue();
         } else {
           await this.mpris.next();

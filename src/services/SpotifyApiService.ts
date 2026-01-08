@@ -186,6 +186,19 @@ export class SpotifyApiService {
   }
 
   /**
+   * Add a track to Spotify's playback queue
+   * The track will play after the current track and any previously queued tracks
+   */
+  async addToQueue(trackUri: string, deviceId?: string): Promise<void> {
+    const params = new URLSearchParams({ uri: trackUri });
+    if (deviceId) params.append("device_id", deviceId);
+    
+    await this.request(`/me/player/queue?${params}`, {
+      method: "POST",
+    });
+  }
+
+  /**
    * Pause playback
    */
   async pause(deviceId?: string): Promise<void> {
@@ -207,15 +220,6 @@ export class SpotifyApiService {
   async previous(deviceId?: string): Promise<void> {
     const params = deviceId ? `?device_id=${deviceId}` : "";
     await this.request(`/me/player/previous${params}`, { method: "POST" });
-  }
-
-  /**
-   * Add a track to the queue
-   */
-  async addToQueue(trackUri: string, deviceId?: string): Promise<void> {
-    const params = new URLSearchParams({ uri: trackUri });
-    if (deviceId) params.append("device_id", deviceId);
-    await this.request(`/me/player/queue?${params}`, { method: "POST" });
   }
 
   /**
