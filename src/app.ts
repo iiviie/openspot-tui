@@ -1,7 +1,7 @@
 import { createCliRenderer, ConsolePosition } from "@opentui/core";
 import type { CliRenderer, AppState, KeyEvent, LayoutDimensions, CurrentTrack } from "./types";
 import type { NowPlayingInfo } from "./types/mpris";
-import { Sidebar, NowPlaying, Queue, StatusBar } from "./components";
+import { Sidebar, NowPlaying, SearchBar, ContentWindow, StatusSidebar } from "./components";
 import { cleanupTerminal, calculateLayout } from "./utils";
 import { mockQueue } from "./data/mock";
 import { KEY_BINDINGS } from "./config";
@@ -10,6 +10,17 @@ import { getMprisService, MprisService } from "./services";
 /**
  * Main application class
  * Handles initialization, rendering, and input handling
+ * 
+ * Layout:
+ * +----------+---------------------------+----------+
+ * |          |       SEARCH BAR          |          |
+ * |          +---------------------------+          |
+ * |  LIBRARY |                           |  STATUS  |
+ * |          |     CONTENT WINDOW        |          |
+ * |          |                           |          |
+ * +----------+---------------------------+----------+
+ * |              NOW PLAYING                        |
+ * +-------------------------------------------------+
  */
 export class App {
   private renderer!: CliRenderer;
@@ -17,11 +28,12 @@ export class App {
   private mpris!: MprisService;
   private updateInterval: Timer | null = null;
   
-  // Components
+  // Components - new layout
   private sidebar!: Sidebar;
+  private searchBar!: SearchBar;
+  private contentWindow!: ContentWindow;
+  private statusSidebar!: StatusSidebar;
   private nowPlaying!: NowPlaying;
-  private queue!: Queue;
-  private statusBar!: StatusBar;
 
   // Application state
   private state: AppState = {
@@ -30,6 +42,11 @@ export class App {
     queue: mockQueue,
     isPlaying: false,
   };
+
+  // Status state
+  private volume: number = 100;
+  private shuffle: boolean = false;
+  private repeat: string = "None";
 
   /**
    * Initialize and start the application
@@ -42,8 +59,6 @@ export class App {
     this.setupInputHandlers();
     this.setupSignalHandlers();
     this.startUpdateLoop();
-    
-    console.log("Controls: Space=Play/Pause, n/p=Next/Prev, +/-=Volume, q=Quit");
   }
 
   /**
@@ -66,7 +81,7 @@ export class App {
     this.renderer = await createCliRenderer({
       consoleOptions: {
         position: ConsolePosition.BOTTOM,
-        sizePercent: 20,
+        sizePercent: 10,
         startInDebugMode: false,
       },
     });
@@ -87,6 +102,9 @@ export class App {
     if (nowPlaying) {
       this.state.currentTrack = this.convertToCurrentTrack(nowPlaying);
       this.state.isPlaying = nowPlaying.isPlaying;
+      this.volume = Math.round(nowPlaying.volume * 100);
+      this.shuffle = nowPlaying.shuffle;
+      this.repeat = nowPlaying.loopStatus;
     } else {
       this.state.currentTrack = null;
       this.state.isPlaying = false;
@@ -122,10 +140,27 @@ export class App {
    * Create and setup all UI components
    */
   private setupComponents(): void {
+    // Left sidebar - Library navigation
     this.sidebar = new Sidebar(this.renderer, this.layout);
+    
+    // Center top - Search bar
+    this.searchBar = new SearchBar(this.renderer, this.layout);
+    
+    // Center main - Content window
+    this.contentWindow = new ContentWindow(this.renderer, this.layout, this.state.queue);
+    
+    // Right sidebar - Status
+    this.statusSidebar = new StatusSidebar(
+      this.renderer, 
+      this.layout, 
+      this.state.currentTrack,
+      this.volume,
+      this.shuffle,
+      this.repeat
+    );
+    
+    // Bottom bar - Now playing
     this.nowPlaying = new NowPlaying(this.renderer, this.layout, this.state.currentTrack);
-    this.queue = new Queue(this.renderer, this.layout, this.state.queue);
-    this.statusBar = new StatusBar(this.renderer, this.layout, this.state.currentTrack);
   }
 
   /**
@@ -133,9 +168,10 @@ export class App {
    */
   private render(): void {
     this.sidebar.render();
+    this.searchBar.render();
+    this.contentWindow.render();
+    this.statusSidebar.render();
     this.nowPlaying.render();
-    this.queue.render();
-    this.statusBar.render();
   }
 
   /**
@@ -146,7 +182,12 @@ export class App {
       await this.updateFromMpris();
       // Re-render components with new data
       this.nowPlaying.updateTrack(this.state.currentTrack);
-      this.statusBar.updateTrack(this.state.currentTrack);
+      this.statusSidebar.updateStatus(
+        this.state.currentTrack,
+        this.volume,
+        this.shuffle,
+        this.repeat
+      );
     }, 1000); // Update every second
   }
 
@@ -283,8 +324,9 @@ export class App {
 
     // Destroy components
     this.sidebar?.destroy();
+    this.searchBar?.destroy();
+    this.contentWindow?.destroy();
+    this.statusSidebar?.destroy();
     this.nowPlaying?.destroy();
-    this.queue?.destroy();
-    this.statusBar?.destroy();
   }
 }

@@ -8,11 +8,19 @@ export const APP_VERSION = "1.0.0";
 
 /**
  * Layout constants
+ * New 3-column layout: [LIBRARY] [SEARCH/CONTENT] [STATUS]
+ *                      [         NOW PLAYING            ]
  */
-export const SIDEBAR_WIDTH = 22;
-export const STATUS_BAR_HEIGHT = 3;
-export const MIN_TERM_WIDTH = 80;
+export const LEFT_SIDEBAR_WIDTH = 20;   // Library sidebar
+export const RIGHT_SIDEBAR_WIDTH = 22;  // Status sidebar
+export const SEARCH_BAR_HEIGHT = 3;     // Search bar at top of center
+export const NOW_PLAYING_HEIGHT = 5;    // Now playing bar at bottom
+export const MIN_TERM_WIDTH = 100;
 export const MIN_TERM_HEIGHT = 24;
+
+// Legacy exports for compatibility
+export const SIDEBAR_WIDTH = LEFT_SIDEBAR_WIDTH;
+export const STATUS_BAR_HEIGHT = NOW_PLAYING_HEIGHT;
 
 /**
  * Library menu items

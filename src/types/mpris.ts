@@ -56,4 +56,6 @@ export interface NowPlayingInfo {
   positionMs: number;
   isPlaying: boolean;
   volume: number;
+  shuffle: boolean;
+  loopStatus: LoopStatus;
 }

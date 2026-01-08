@@ -1,6 +1,13 @@
 import { spawnSync } from "child_process";
 import type { LayoutDimensions } from "../types";
-import { SIDEBAR_WIDTH, STATUS_BAR_HEIGHT, MIN_TERM_WIDTH, MIN_TERM_HEIGHT } from "../config";
+import { 
+  LEFT_SIDEBAR_WIDTH, 
+  RIGHT_SIDEBAR_WIDTH, 
+  SEARCH_BAR_HEIGHT, 
+  NOW_PLAYING_HEIGHT,
+  MIN_TERM_WIDTH, 
+  MIN_TERM_HEIGHT 
+} from "../config";
 
 /**
  * ANSI escape sequences for terminal control
@@ -79,16 +86,62 @@ export function getTerminalSize(): { width: number; height: number } {
 
 /**
  * Calculate layout dimensions based on terminal size
+ * 
+ * Layout:
+ * +----------+---------------------------+----------+
+ * |          |       SEARCH BAR          |          |
+ * |          +---------------------------+          |
+ * |  LIBRARY |                           |  STATUS  |
+ * |          |     CONTENT WINDOW        |          |
+ * |          |                           |          |
+ * +----------+---------------------------+----------+
+ * |              NOW PLAYING                        |
+ * +-------------------------------------------------+
  */
 export function calculateLayout(): LayoutDimensions {
   const { width: termWidth, height: termHeight } = getTerminalSize();
   
+  // Heights
+  const upperSectionHeight = termHeight - NOW_PLAYING_HEIGHT;
+  const searchBarY = 0;
+  const contentWindowY = SEARCH_BAR_HEIGHT;
+  const contentWindowHeight = upperSectionHeight - SEARCH_BAR_HEIGHT;
+  const nowPlayingY = upperSectionHeight;
+  
+  // Widths
+  const centerWidth = termWidth - LEFT_SIDEBAR_WIDTH - RIGHT_SIDEBAR_WIDTH;
+  const centerX = LEFT_SIDEBAR_WIDTH;
+  const rightSidebarX = termWidth - RIGHT_SIDEBAR_WIDTH;
+  
   return {
     termWidth,
     termHeight,
-    sidebarWidth: SIDEBAR_WIDTH,
-    mainWidth: termWidth - SIDEBAR_WIDTH,
-    contentHeight: termHeight - STATUS_BAR_HEIGHT,
-    statusBarHeight: STATUS_BAR_HEIGHT,
+    // Left sidebar (Library)
+    leftSidebarWidth: LEFT_SIDEBAR_WIDTH,
+    leftSidebarHeight: upperSectionHeight,
+    leftSidebarX: 0,
+    leftSidebarY: 0,
+    // Right sidebar (Status)
+    rightSidebarWidth: RIGHT_SIDEBAR_WIDTH,
+    rightSidebarHeight: upperSectionHeight,
+    rightSidebarX: rightSidebarX,
+    rightSidebarY: 0,
+    // Center content area
+    centerWidth,
+    centerX,
+    // Search bar (top of center)
+    searchBarHeight: SEARCH_BAR_HEIGHT,
+    searchBarY,
+    // Content window (main center area)
+    contentWindowHeight,
+    contentWindowY,
+    // Now playing bar (bottom full width)
+    nowPlayingHeight: NOW_PLAYING_HEIGHT,
+    nowPlayingY,
+    // Legacy (for compatibility)
+    sidebarWidth: LEFT_SIDEBAR_WIDTH,
+    mainWidth: centerWidth,
+    contentHeight: upperSectionHeight,
+    statusBarHeight: NOW_PLAYING_HEIGHT,
   };
 }

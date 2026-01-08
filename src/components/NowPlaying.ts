@@ -4,18 +4,17 @@ import { colors } from "../config/colors";
 import { UI_STRINGS } from "../config/constants";
 
 /**
- * Now Playing component showing current track info and progress
+ * Now Playing component - full width bar at the bottom
+ * Shows current track info, progress bar, and time
  */
 export class NowPlaying {
   private container: BoxRenderable;
-  private header: TextRenderable;
+  private playingStatus: TextRenderable;
   private trackTitle: TextRenderable;
   private trackInfo: TextRenderable;
   private progressBar: TextRenderable;
   private timeDisplay: TextRenderable;
-  private playingStatus: TextRenderable;
 
-  private readonly mainContentLeft: number;
   private readonly barWidth: number;
 
   constructor(
@@ -23,11 +22,10 @@ export class NowPlaying {
     private layout: LayoutDimensions,
     private track: CurrentTrack | null
   ) {
-    this.mainContentLeft = layout.sidebarWidth + 2;
-    this.barWidth = Math.max(20, this.layout.mainWidth - 25);
+    // Progress bar takes up most of the width, leaving room for time display
+    this.barWidth = Math.max(20, this.layout.termWidth - 40);
     
     this.container = this.createContainer();
-    this.header = this.createHeader();
     this.playingStatus = this.createPlayingStatus();
     this.trackTitle = this.createTrackTitle();
     this.trackInfo = this.createTrackInfo();
@@ -37,38 +35,27 @@ export class NowPlaying {
 
   private createContainer(): BoxRenderable {
     return new BoxRenderable(this.renderer, {
-      id: "main-content",
-      width: this.layout.mainWidth,
-      height: this.layout.contentHeight,
-      backgroundColor: colors.bg,
+      id: "now-playing-bar",
+      width: this.layout.termWidth,
+      height: this.layout.nowPlayingHeight,
+      backgroundColor: colors.bgSecondary,
       borderStyle: "single",
       borderColor: colors.border,
       position: "absolute",
-      left: this.layout.sidebarWidth,
-      top: 0,
-    });
-  }
-
-  private createHeader(): TextRenderable {
-    return new TextRenderable(this.renderer, {
-      id: "now-playing-header",
-      content: UI_STRINGS.nowPlaying,
-      fg: colors.textDim,
-      position: "absolute",
-      left: this.mainContentLeft,
-      top: 1,
+      left: 0,
+      top: this.layout.nowPlayingY,
     });
   }
 
   private createPlayingStatus(): TextRenderable {
-    const icon = this.track?.isPlaying ? "▶" : "⏸";
+    const icon = this.track?.isPlaying ? ">" : "||";
     return new TextRenderable(this.renderer, {
       id: "playing-status",
       content: icon,
       fg: colors.accent,
       position: "absolute",
-      left: this.mainContentLeft,
-      top: 3,
+      left: 2,
+      top: this.layout.nowPlayingY + 1,
     });
   }
 
@@ -79,26 +66,26 @@ export class NowPlaying {
     
     return new TextRenderable(this.renderer, {
       id: "track-title",
-      content,
+      content: this.truncate(content, 40),
       fg: colors.textPrimary,
       position: "absolute",
-      left: this.mainContentLeft + 2,
-      top: 3,
+      left: 6,
+      top: this.layout.nowPlayingY + 1,
     });
   }
 
   private createTrackInfo(): TextRenderable {
     const content = this.track
-      ? `${this.track.artist || "Unknown"} • ${this.track.album || "Unknown"}`
+      ? `${this.track.artist || "Unknown"} - ${this.track.album || "Unknown"}`
       : "";
     
     return new TextRenderable(this.renderer, {
       id: "track-info",
-      content,
+      content: this.truncate(content, 50),
       fg: colors.textSecondary,
       position: "absolute",
-      left: this.mainContentLeft + 2,
-      top: 4,
+      left: 6,
+      top: this.layout.nowPlayingY + 2,
     });
   }
 
@@ -110,8 +97,8 @@ export class NowPlaying {
       content,
       fg: colors.textSecondary,
       position: "absolute",
-      left: this.mainContentLeft,
-      top: 6,
+      left: 6,
+      top: this.layout.nowPlayingY + 3,
     });
   }
 
@@ -125,15 +112,21 @@ export class NowPlaying {
       content,
       fg: colors.textDim,
       position: "absolute",
-      left: this.mainContentLeft + this.barWidth + 3,
-      top: 6,
+      left: this.barWidth + 10,
+      top: this.layout.nowPlayingY + 3,
     });
   }
 
   private formatProgressBar(progress: number): string {
-    const filled = Math.floor(this.barWidth * progress);
-    const empty = this.barWidth - filled;
-    return `[${"█".repeat(filled)}${"░".repeat(empty)}]`;
+    const width = Math.min(this.barWidth, this.layout.termWidth - 30);
+    const filled = Math.floor(width * progress);
+    const empty = width - filled;
+    return `[${"=".repeat(filled)}${"-".repeat(empty)}]`;
+  }
+
+  private truncate(str: string, maxLength: number): string {
+    if (str.length <= maxLength) return str;
+    return str.substring(0, maxLength - 3) + "...";
   }
 
   /**
@@ -143,18 +136,18 @@ export class NowPlaying {
     this.track = track;
     
     // Update playing status
-    const icon = this.track?.isPlaying ? "▶" : "⏸";
+    const icon = this.track?.isPlaying ? ">" : "||";
     (this.playingStatus as any).content = icon;
 
     // Update track title
     const title = this.track ? this.track.title : UI_STRINGS.noTrack;
-    (this.trackTitle as any).content = title;
+    (this.trackTitle as any).content = this.truncate(title, 40);
 
     // Update track info
     const info = this.track
-      ? `${this.track.artist || "Unknown"} • ${this.track.album || "Unknown"}`
+      ? `${this.track.artist || "Unknown"} - ${this.track.album || "Unknown"}`
       : "";
-    (this.trackInfo as any).content = info;
+    (this.trackInfo as any).content = this.truncate(info, 50);
 
     // Update progress bar
     (this.progressBar as any).content = this.formatProgressBar(this.track?.progress || 0);
@@ -171,7 +164,6 @@ export class NowPlaying {
    */
   render(): void {
     this.renderer.root.add(this.container);
-    this.renderer.root.add(this.header);
     this.renderer.root.add(this.playingStatus);
     this.renderer.root.add(this.trackTitle);
     this.renderer.root.add(this.trackInfo);

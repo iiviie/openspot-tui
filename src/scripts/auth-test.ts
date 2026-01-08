@@ -43,7 +43,6 @@ async function main() {
 
   // Test API call with the token
   console.log("\n📡 Testing API access...");
-  console.log("   (Using ncspot's shared client ID - may hit rate limits)\n");
   try {
     const token = await authService.getValidAccessToken();
     const user = await fetchUserProfile(token);

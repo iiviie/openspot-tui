@@ -39,11 +39,43 @@ export interface AppState {
 }
 
 /**
- * Layout dimensions
+ * Layout dimensions for 3-column design
+ * +----------+---------------------------+----------+
+ * |          |       SEARCH BAR          |          |
+ * |          +---------------------------+          |
+ * |  LIBRARY |                           |  STATUS  |
+ * |          |     CONTENT WINDOW        |          |
+ * |          |                           |          |
+ * +----------+---------------------------+----------+
+ * |              NOW PLAYING                        |
+ * +-------------------------------------------------+
  */
 export interface LayoutDimensions {
   termWidth: number;
   termHeight: number;
+  // Left sidebar (Library)
+  leftSidebarWidth: number;
+  leftSidebarHeight: number;
+  leftSidebarX: number;
+  leftSidebarY: number;
+  // Right sidebar (Status)
+  rightSidebarWidth: number;
+  rightSidebarHeight: number;
+  rightSidebarX: number;
+  rightSidebarY: number;
+  // Center content area
+  centerWidth: number;
+  centerX: number;
+  // Search bar (top of center)
+  searchBarHeight: number;
+  searchBarY: number;
+  // Content window (main center area)
+  contentWindowHeight: number;
+  contentWindowY: number;
+  // Now playing bar (bottom full width)
+  nowPlayingHeight: number;
+  nowPlayingY: number;
+  // Legacy (for compatibility)
   sidebarWidth: number;
   mainWidth: number;
   contentHeight: number;

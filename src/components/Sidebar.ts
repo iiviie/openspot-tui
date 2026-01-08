@@ -4,7 +4,7 @@ import { colors } from "../config/colors";
 import { UI_STRINGS, LIBRARY_MENU_ITEMS } from "../config/constants";
 
 /**
- * Sidebar component displaying the library menu
+ * Sidebar component displaying the library menu (left side)
  */
 export class Sidebar {
   private container: BoxRenderable;
@@ -27,14 +27,14 @@ export class Sidebar {
   private createContainer(): BoxRenderable {
     return new BoxRenderable(this.renderer, {
       id: "sidebar",
-      width: this.layout.sidebarWidth,
-      height: this.layout.contentHeight,
+      width: this.layout.leftSidebarWidth,
+      height: this.layout.leftSidebarHeight,
       backgroundColor: colors.bg,
       borderStyle: "single",
       borderColor: colors.border,
       position: "absolute",
-      left: 0,
-      top: 0,
+      left: this.layout.leftSidebarX,
+      top: this.layout.leftSidebarY,
     });
   }
 
@@ -44,8 +44,8 @@ export class Sidebar {
       content: UI_STRINGS.library,
       fg: colors.textDim,
       position: "absolute",
-      left: 2,
-      top: 1,
+      left: this.layout.leftSidebarX + 2,
+      top: this.layout.leftSidebarY + 1,
     });
   }
 
@@ -57,8 +57,8 @@ export class Sidebar {
         content: this.formatMenuItem(item.label, isSelected),
         fg: isSelected ? colors.textPrimary : colors.textSecondary,
         position: "absolute",
-        left: 2,
-        top: 3 + index,
+        left: this.layout.leftSidebarX + 2,
+        top: this.layout.leftSidebarY + 3 + index,
       });
     });
   }
