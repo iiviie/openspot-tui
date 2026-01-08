@@ -80,6 +80,12 @@ export class App {
   private shuffleCooldownUntil: number = 0;
   private repeatCooldownUntil: number = 0;
 
+  // Debounce tracking for rapid key presses (prevents D-Bus spam)
+  private readonly DEBOUNCE_MS = 150; // Minimum ms between same-key presses
+  private lastPlayPauseTime: number = 0;
+  private lastShuffleTime: number = 0;
+  private lastRepeatTime: number = 0;
+
   /**
    * Initialize and start the application
    */
@@ -668,15 +674,21 @@ export class App {
     let needsFullUpdate = true;
 
     switch (keyName) {
-      case "space":
-        // Optimistic update: toggle play state immediately, then send command
-        await this.mpris.playPause();
+      case "space": {
+        // Debounce: ignore rapid presses within DEBOUNCE_MS
+        const now = Date.now();
+        if (now - this.lastPlayPauseTime < this.DEBOUNCE_MS) {
+          needsFullUpdate = false;
+          break;
+        }
+        this.lastPlayPauseTime = now;
+
+        // OPTIMISTIC UPDATE: Update UI immediately BEFORE D-Bus call
         this.state.isPlaying = !this.state.isPlaying;
         if (this.state.currentTrack) {
           this.state.currentTrack.isPlaying = this.state.isPlaying;
         }
-        // Set cooldown to prevent update loop from overwriting our optimistic state
-        this.playStateCooldownUntil = Date.now() + this.OPTIMISTIC_COOLDOWN_MS;
+        this.playStateCooldownUntil = now + this.OPTIMISTIC_COOLDOWN_MS;
         this.nowPlaying.updateTrack(this.state.currentTrack);
         this.statusSidebar.updateStatus(
           this.state.currentTrack,
@@ -684,8 +696,19 @@ export class App {
           this.shuffle,
           this.repeat
         );
+
+        // Fire-and-forget: Send D-Bus command without blocking UI
+        this.mpris.playPause().catch(() => {
+          // If D-Bus fails, revert the optimistic update
+          this.state.isPlaying = !this.state.isPlaying;
+          if (this.state.currentTrack) {
+            this.state.currentTrack.isPlaying = this.state.isPlaying;
+          }
+        });
+
         needsFullUpdate = false;
         break;
+      }
       case "n":
         // Play from queue if available, otherwise use MPRIS next
         if (this.statusSidebar?.hasQueuedItems()) {
@@ -710,32 +733,65 @@ export class App {
       case "left":
         await this.mpris.seekBackward(SEEK_STEP_MS);
         break;
-      case "s":
-        // Optimistic update: pass cached state, update local state immediately
-        this.shuffle = await this.mpris.toggleShuffle(this.shuffle);
-        // Set cooldown to prevent update loop from overwriting our optimistic state
-        this.shuffleCooldownUntil = Date.now() + this.OPTIMISTIC_COOLDOWN_MS;
+      case "s": {
+        // Debounce: ignore rapid presses
+        const now = Date.now();
+        if (now - this.lastShuffleTime < this.DEBOUNCE_MS) {
+          needsFullUpdate = false;
+          break;
+        }
+        this.lastShuffleTime = now;
+
+        // OPTIMISTIC UPDATE: Update UI immediately BEFORE D-Bus call
+        const previousShuffle = this.shuffle;
+        this.shuffle = !this.shuffle;
+        this.shuffleCooldownUntil = now + this.OPTIMISTIC_COOLDOWN_MS;
         this.statusSidebar.updateStatus(
           this.state.currentTrack,
           this.volume,
           this.shuffle,
           this.repeat
         );
+
+        // Fire-and-forget: Send D-Bus command without blocking UI
+        this.mpris.toggleShuffle(previousShuffle).catch(() => {
+          // If D-Bus fails, revert
+          this.shuffle = previousShuffle;
+        });
+
         needsFullUpdate = false;
         break;
-      case "r":
-        // Optimistic update: pass cached state, update local state immediately
-        this.repeat = await this.mpris.cycleLoopStatus(this.repeat as any);
-        // Set cooldown to prevent update loop from overwriting our optimistic state
-        this.repeatCooldownUntil = Date.now() + this.OPTIMISTIC_COOLDOWN_MS;
+      }
+      case "r": {
+        // Debounce: ignore rapid presses
+        const now = Date.now();
+        if (now - this.lastRepeatTime < this.DEBOUNCE_MS) {
+          needsFullUpdate = false;
+          break;
+        }
+        this.lastRepeatTime = now;
+
+        // OPTIMISTIC UPDATE: Update UI immediately BEFORE D-Bus call
+        const previousRepeat = this.repeat;
+        const nextRepeat = this.repeat === "None" ? "Playlist" : this.repeat === "Playlist" ? "Track" : "None";
+        this.repeat = nextRepeat;
+        this.repeatCooldownUntil = now + this.OPTIMISTIC_COOLDOWN_MS;
         this.statusSidebar.updateStatus(
           this.state.currentTrack,
           this.volume,
           this.shuffle,
           this.repeat
         );
+
+        // Fire-and-forget: Send D-Bus command without blocking UI
+        this.mpris.cycleLoopStatus(previousRepeat as any).catch(() => {
+          // If D-Bus fails, revert
+          this.repeat = previousRepeat;
+        });
+
         needsFullUpdate = false;
         break;
+      }
     }
 
     // Update UI immediately after control (skip for optimistic updates)
