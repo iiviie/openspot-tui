@@ -43,7 +43,7 @@ export class AuthService {
     "user-follow-modify",
   ];
 
-  constructor(clientId: string, redirectUri: string = "http://127.0.0.1:8888/login") {
+  constructor(clientId: string, redirectUri: string = "http://127.0.0.1:8888/callback") {
     this.config = {
       clientId,
       redirectUri,
@@ -434,6 +434,6 @@ export function getAuthService(clientId?: string): AuthService {
   return authServiceInstance;
 }
 
-// ncspot's Spotify Client ID (open source project)
-// Note: Shared client ID may have rate limits - we handle retries
-export const SPOTIFY_CLIENT_ID = "65b708073fc0480ea92a077233ca87bd";
+// Our own Spotify Client ID (personal app)
+// This avoids rate limit issues from shared ncspot client ID
+export const SPOTIFY_CLIENT_ID = "fd10bd82d78e41fa8ee0e6b041650261";
