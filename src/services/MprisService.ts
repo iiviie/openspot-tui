@@ -350,11 +350,13 @@ export class MprisService {
   async getNowPlaying(): Promise<NowPlayingInfo | null> {
     if (!this.connected) return null;
 
-    const [playbackStatus, metadata, position, volume] = await Promise.all([
+    const [playbackStatus, metadata, position, volume, shuffle, loopStatus] = await Promise.all([
       this.getPlaybackStatus(),
       this.getMetadata(),
       this.getPosition(),
       this.getVolume(),
+      this.getShuffle(),
+      this.getLoopStatus(),
     ]);
 
     if (!metadata) return null;
@@ -368,6 +370,8 @@ export class MprisService {
       positionMs: Math.floor(position / 1000),
       isPlaying: playbackStatus === "Playing",
       volume,
+      shuffle,
+      loopStatus,
     };
   }
 
