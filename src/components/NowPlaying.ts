@@ -5,32 +5,26 @@ import { UI_STRINGS } from "../config/constants";
 
 /**
  * Now Playing component - full width bar at the bottom
- * Shows current track info, progress bar, and time
+ * Shows current track info centered, with progress bar and time
  */
 export class NowPlaying {
   private container: BoxRenderable;
-  private playingStatus: TextRenderable;
-  private trackTitle: TextRenderable;
-  private trackInfo: TextRenderable;
-  private progressBar: TextRenderable;
-  private timeDisplay: TextRenderable;
+  private trackLine: TextRenderable;
+  private progressLine: TextRenderable;
 
-  private readonly barWidth: number;
+  private readonly progressBarWidth: number;
 
   constructor(
     private renderer: CliRenderer,
     private layout: LayoutDimensions,
     private track: CurrentTrack | null
   ) {
-    // Progress bar takes up most of the width, leaving room for time display
-    this.barWidth = Math.max(20, this.layout.termWidth - 40);
+    // Progress bar width - leave room for time display on sides
+    this.progressBarWidth = Math.max(20, Math.floor(this.layout.termWidth * 0.6));
     
     this.container = this.createContainer();
-    this.playingStatus = this.createPlayingStatus();
-    this.trackTitle = this.createTrackTitle();
-    this.trackInfo = this.createTrackInfo();
-    this.progressBar = this.createProgressBar();
-    this.timeDisplay = this.createTimeDisplay();
+    this.trackLine = this.createTrackLine();
+    this.progressLine = this.createProgressLine();
   }
 
   private createContainer(): BoxRenderable {
@@ -47,81 +41,71 @@ export class NowPlaying {
     });
   }
 
-  private createPlayingStatus(): TextRenderable {
-    const icon = this.track?.isPlaying ? ">" : "||";
-    return new TextRenderable(this.renderer, {
-      id: "playing-status",
-      content: icon,
-      fg: colors.accent,
-      position: "absolute",
-      left: 2,
-      top: this.layout.nowPlayingY + 1,
-    });
-  }
-
-  private createTrackTitle(): TextRenderable {
-    const content = this.track 
-      ? this.track.title 
-      : UI_STRINGS.noTrack;
+  /**
+   * Create the main track info line (icon + title + artist)
+   * Centered horizontally
+   */
+  private createTrackLine(): TextRenderable {
+    const content = this.getTrackLineContent();
+    const leftPos = Math.floor((this.layout.termWidth - content.length) / 2);
     
     return new TextRenderable(this.renderer, {
-      id: "track-title",
-      content: this.truncate(content, 40),
+      id: "track-line",
+      content,
       fg: colors.textPrimary,
       position: "absolute",
-      left: 6,
+      left: Math.max(2, leftPos),
       top: this.layout.nowPlayingY + 1,
     });
   }
 
-  private createTrackInfo(): TextRenderable {
-    const content = this.track
-      ? `${this.track.artist || "Unknown"} - ${this.track.album || "Unknown"}`
-      : "";
+  /**
+   * Create the progress line (time + bar + time)
+   * Centered horizontally
+   */
+  private createProgressLine(): TextRenderable {
+    const content = this.getProgressLineContent();
+    const leftPos = Math.floor((this.layout.termWidth - content.length) / 2);
     
     return new TextRenderable(this.renderer, {
-      id: "track-info",
-      content: this.truncate(content, 50),
-      fg: colors.textSecondary,
-      position: "absolute",
-      left: 6,
-      top: this.layout.nowPlayingY + 2,
-    });
-  }
-
-  private createProgressBar(): TextRenderable {
-    const content = this.formatProgressBar(this.track?.progress || 0);
-    
-    return new TextRenderable(this.renderer, {
-      id: "progress-bar",
+      id: "progress-line",
       content,
       fg: colors.textSecondary,
       position: "absolute",
-      left: 6,
+      left: Math.max(2, leftPos),
       top: this.layout.nowPlayingY + 3,
     });
   }
 
-  private createTimeDisplay(): TextRenderable {
-    const content = this.track
-      ? `${this.track.currentTime} / ${this.track.totalTime}`
-      : "0:00 / 0:00";
+  /**
+   * Get the track info line content
+   */
+  private getTrackLineContent(): string {
+    if (!this.track) {
+      return UI_STRINGS.noTrack;
+    }
     
-    return new TextRenderable(this.renderer, {
-      id: "time-display",
-      content,
-      fg: colors.textDim,
-      position: "absolute",
-      left: this.barWidth + 10,
-      top: this.layout.nowPlayingY + 3,
-    });
+    const icon = this.track.isPlaying ? ">" : "||";
+    const title = this.truncate(this.track.title, 40);
+    const artist = this.track.artist || "Unknown";
+    
+    return `${icon}  ${title}  -  ${artist}`;
   }
 
-  private formatProgressBar(progress: number): string {
-    const width = Math.min(this.barWidth, this.layout.termWidth - 30);
-    const filled = Math.floor(width * progress);
-    const empty = width - filled;
-    return `[${"=".repeat(filled)}${"-".repeat(empty)}]`;
+  /**
+   * Get the progress line content (time + bar + time)
+   */
+  private getProgressLineContent(): string {
+    const currentTime = this.track?.currentTime || "0:00";
+    const totalTime = this.track?.totalTime || "0:00";
+    const progress = this.track?.progress || 0;
+    
+    const barWidth = this.progressBarWidth;
+    const filled = Math.floor(barWidth * progress);
+    const empty = barWidth - filled;
+    const bar = `[${"=".repeat(filled)}${"-".repeat(empty)}]`;
+    
+    return `${currentTime}  ${bar}  ${totalTime}`;
   }
 
   private truncate(str: string, maxLength: number): string {
@@ -135,28 +119,17 @@ export class NowPlaying {
   updateTrack(track: CurrentTrack | null): void {
     this.track = track;
     
-    // Update playing status
-    const icon = this.track?.isPlaying ? ">" : "||";
-    (this.playingStatus as any).content = icon;
+    // Update track line content and position
+    const trackContent = this.getTrackLineContent();
+    const trackLeftPos = Math.floor((this.layout.termWidth - trackContent.length) / 2);
+    (this.trackLine as any).content = trackContent;
+    (this.trackLine as any).left = Math.max(2, trackLeftPos);
 
-    // Update track title
-    const title = this.track ? this.track.title : UI_STRINGS.noTrack;
-    (this.trackTitle as any).content = this.truncate(title, 40);
-
-    // Update track info
-    const info = this.track
-      ? `${this.track.artist || "Unknown"} - ${this.track.album || "Unknown"}`
-      : "";
-    (this.trackInfo as any).content = this.truncate(info, 50);
-
-    // Update progress bar
-    (this.progressBar as any).content = this.formatProgressBar(this.track?.progress || 0);
-
-    // Update time display
-    const time = this.track
-      ? `${this.track.currentTime} / ${this.track.totalTime}`
-      : "0:00 / 0:00";
-    (this.timeDisplay as any).content = time;
+    // Update progress line content and position
+    const progressContent = this.getProgressLineContent();
+    const progressLeftPos = Math.floor((this.layout.termWidth - progressContent.length) / 2);
+    (this.progressLine as any).content = progressContent;
+    (this.progressLine as any).left = Math.max(2, progressLeftPos);
   }
 
   /**
@@ -164,11 +137,8 @@ export class NowPlaying {
    */
   render(): void {
     this.renderer.root.add(this.container);
-    this.renderer.root.add(this.playingStatus);
-    this.renderer.root.add(this.trackTitle);
-    this.renderer.root.add(this.trackInfo);
-    this.renderer.root.add(this.progressBar);
-    this.renderer.root.add(this.timeDisplay);
+    this.renderer.root.add(this.trackLine);
+    this.renderer.root.add(this.progressLine);
   }
 
   /**
