@@ -50,6 +50,16 @@ async function main() {
     },
   });
 
+  // Get terminal dimensions
+  const termWidth = process.stdout.columns || 120;
+  const termHeight = process.stdout.rows || 30;
+  
+  // Layout calculations
+  const sidebarWidth = 22;
+  const mainWidth = termWidth - sidebarWidth;
+  const contentHeight = termHeight - 3; // Leave room for status bar
+  const statusBarHeight = 3;
+
   // Track selected menu item
   let selectedIndex = 0;
   const menuItems: TextRenderable[] = [];
@@ -58,8 +68,8 @@ async function main() {
   
   const sidebar = new BoxRenderable(renderer, {
     id: "sidebar",
-    width: 18,
-    height: 24,
+    width: sidebarWidth,
+    height: contentHeight,
     backgroundColor: colors.bg,
     borderStyle: "single",
     borderColor: colors.border,
@@ -95,22 +105,24 @@ async function main() {
   
   const mainBox = new BoxRenderable(renderer, {
     id: "main-box",
-    width: 62,
-    height: 24,
+    width: mainWidth,
+    height: contentHeight,
     backgroundColor: colors.bg,
     borderStyle: "single",
     borderColor: colors.border,
     position: "absolute",
-    left: 18,
+    left: sidebarWidth,
     top: 0,
   });
+
+  const mainContentLeft = sidebarWidth + 2;
 
   const nowPlayingLabel = new TextRenderable(renderer, {
     id: "now-playing-label",
     content: "NOW PLAYING",
     fg: colors.textDim,
     position: "absolute",
-    left: 20,
+    left: mainContentLeft,
     top: 1,
   });
 
@@ -119,7 +131,7 @@ async function main() {
     content: `Track: ${currentTrack.title}`,
     fg: colors.textPrimary,
     position: "absolute",
-    left: 20,
+    left: mainContentLeft,
     top: 3,
   });
 
@@ -128,19 +140,19 @@ async function main() {
     content: `Artist: ${currentTrack.artist} | Album: ${currentTrack.album}`,
     fg: colors.textSecondary,
     position: "absolute",
-    left: 20,
+    left: mainContentLeft,
     top: 4,
   });
 
-  // Progress bar
-  const barWidth = 40;
+  // Progress bar - scale to available width
+  const barWidth = Math.max(20, mainWidth - 20);
   const filled = Math.floor(barWidth * currentTrack.progress);
   const progressBar = new TextRenderable(renderer, {
     id: "progress-bar",
     content: `[${"=".repeat(filled)}${"-".repeat(barWidth - filled)}]`,
     fg: colors.textSecondary,
     position: "absolute",
-    left: 20,
+    left: mainContentLeft,
     top: 6,
   });
 
@@ -149,7 +161,7 @@ async function main() {
     content: `${currentTrack.currentTime} / ${currentTrack.totalTime}`,
     fg: colors.textDim,
     position: "absolute",
-    left: 63,
+    left: mainContentLeft + barWidth + 3,
     top: 6,
   });
 
@@ -160,12 +172,14 @@ async function main() {
     content: "QUEUE",
     fg: colors.textDim,
     position: "absolute",
-    left: 20,
+    left: mainContentLeft,
     top: 8,
   });
 
   const queueItems: TextRenderable[] = [];
-  queue.forEach((track, index) => {
+  const maxQueueItems = Math.min(queue.length, contentHeight - 12);
+  
+  queue.slice(0, maxQueueItems).forEach((track, index) => {
     const text = track.artist 
       ? `${track.title} - ${track.artist}`
       : `${track.title} | Album: ${track.album}`;
@@ -175,7 +189,7 @@ async function main() {
       content: text,
       fg: index === 0 ? colors.highlight : colors.textSecondary,
       position: "absolute",
-      left: 20,
+      left: mainContentLeft,
       top: 10 + index,
     });
     queueItems.push(queueItem);
@@ -185,14 +199,14 @@ async function main() {
   
   const statusBar = new BoxRenderable(renderer, {
     id: "status-bar",
-    width: 80,
-    height: 3,
+    width: termWidth,
+    height: statusBarHeight,
     backgroundColor: colors.bgSecondary,
     borderStyle: "single",
     borderColor: colors.border,
     position: "absolute",
     left: 0,
-    top: 24,
+    top: contentHeight,
   });
 
   const statusText = new TextRenderable(renderer, {
@@ -201,16 +215,16 @@ async function main() {
     fg: colors.textSecondary,
     position: "absolute",
     left: 2,
-    top: 25,
+    top: contentHeight + 1,
   });
 
   const controls = new TextRenderable(renderer, {
     id: "controls",
-    content: "[<] [>] [||]",
+    content: "[<] [>] [||]  q:quit",
     fg: colors.textDim,
     position: "absolute",
-    left: 65,
-    top: 25,
+    left: termWidth - 22,
+    top: contentHeight + 1,
   });
 
   // ============ ADD COMPONENTS ============
