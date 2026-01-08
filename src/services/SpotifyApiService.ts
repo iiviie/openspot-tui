@@ -1,10 +1,11 @@
 /**
  * Spotify Web API Service
  * Handles all Spotify Web API calls for search, playback, library, etc.
- * Includes runtime validation with Zod for API response safety.
+ * Includes runtime validation with Zod and caching for better performance.
  */
 
 import { getAuthService, SPOTIFY_CLIENT_ID } from "./AuthService";
+import { getCacheService, CacheKeys, CacheTTL } from "./CacheService";
 import type {
   SpotifySearchResults,
   SpotifyTrack,
@@ -27,10 +28,11 @@ import type { z } from "zod";
 const API_BASE = "https://api.spotify.com/v1";
 
 /**
- * Spotify Web API Service with validated responses
+ * Spotify Web API Service with validated responses and caching
  */
 export class SpotifyApiService {
   private authService = getAuthService(SPOTIFY_CLIENT_ID);
+  private cache = getCacheService();
 
   /**
    * Make an authenticated API request with optional validation
@@ -270,12 +272,21 @@ export class SpotifyApiService {
   // ─────────────────────────────────────────────────────────────
 
   /**
-   * Get user's saved tracks with validation
+   * Get user's saved tracks with validation and caching
    */
   async getSavedTracks(
     limit: number = 50,
     offset: number = 0
   ): Promise<SpotifyPaginatedResponse<SpotifySavedTrack>> {
+    const cacheKey = CacheKeys.savedTracks(limit, offset);
+    
+    // Try cache first
+    const cached = this.cache.get<SpotifyPaginatedResponse<SpotifySavedTrack>>(cacheKey);
+    if (cached) {
+      return cached;
+    }
+    
+    // Fetch from API
     const params = new URLSearchParams({
       limit: limit.toString(),
       offset: offset.toString(),
@@ -284,21 +295,32 @@ export class SpotifyApiService {
     const data = await this.request<unknown>(`/me/tracks?${params}`);
     const validated = safeValidate(PaginatedSavedTracksSchema, data, "getSavedTracks");
     
-    if (!validated) {
-      // Return empty on validation failure
-      return { items: [], total: 0, limit, offset, href: "", next: null, previous: null };
-    }
+    const result: SpotifyPaginatedResponse<SpotifySavedTrack> = validated
+      ? (validated as SpotifyPaginatedResponse<SpotifySavedTrack>)
+      : { items: [], total: 0, limit, offset, href: "", next: null, previous: null };
     
-    return validated as SpotifyPaginatedResponse<SpotifySavedTrack>;
+    // Cache for 5 minutes
+    this.cache.set(cacheKey, result, CacheTTL.MEDIUM);
+    
+    return result;
   }
 
   /**
-   * Get user's playlists with validation
+   * Get user's playlists with validation and caching
    */
   async getPlaylists(
     limit: number = 50,
     offset: number = 0
   ): Promise<SpotifyPaginatedResponse<SpotifyPlaylist>> {
+    const cacheKey = CacheKeys.playlists(limit, offset);
+    
+    // Try cache first
+    const cached = this.cache.get<SpotifyPaginatedResponse<SpotifyPlaylist>>(cacheKey);
+    if (cached) {
+      return cached;
+    }
+    
+    // Fetch from API
     const params = new URLSearchParams({
       limit: limit.toString(),
       offset: offset.toString(),
@@ -307,22 +329,33 @@ export class SpotifyApiService {
     const data = await this.request<unknown>(`/me/playlists?${params}`);
     const validated = safeValidate(PaginatedPlaylistsSchema, data, "getPlaylists");
     
-    if (!validated) {
-      // Return empty on validation failure
-      return { items: [], total: 0, limit, offset, href: "", next: null, previous: null };
-    }
+    const result: SpotifyPaginatedResponse<SpotifyPlaylist> = validated
+      ? (validated as SpotifyPaginatedResponse<SpotifyPlaylist>)
+      : { items: [], total: 0, limit, offset, href: "", next: null, previous: null };
     
-    return validated as SpotifyPaginatedResponse<SpotifyPlaylist>;
+    // Cache for 5 minutes
+    this.cache.set(cacheKey, result, CacheTTL.MEDIUM);
+    
+    return result;
   }
 
   /**
-   * Get tracks in a playlist with validation
+   * Get tracks in a playlist with validation and caching
    */
   async getPlaylistTracks(
     playlistId: string,
     limit: number = 100,
     offset: number = 0
   ): Promise<SpotifyPaginatedResponse<{ track: SpotifyTrack | null }>> {
+    const cacheKey = CacheKeys.playlistTracks(playlistId, limit, offset);
+    
+    // Try cache first
+    const cached = this.cache.get<SpotifyPaginatedResponse<{ track: SpotifyTrack | null }>>(cacheKey);
+    if (cached) {
+      return cached;
+    }
+    
+    // Fetch from API
     const params = new URLSearchParams({
       limit: limit.toString(),
       offset: offset.toString(),
@@ -331,12 +364,53 @@ export class SpotifyApiService {
     const data = await this.request<unknown>(`/playlists/${playlistId}/tracks?${params}`);
     const validated = safeValidate(PaginatedPlaylistTracksSchema, data, "getPlaylistTracks");
     
-    if (!validated) {
-      // Return empty on validation failure
-      return { items: [], total: 0, limit, offset, href: "", next: null, previous: null };
-    }
+    const result: SpotifyPaginatedResponse<{ track: SpotifyTrack | null }> = validated
+      ? (validated as SpotifyPaginatedResponse<{ track: SpotifyTrack | null }>)
+      : { items: [], total: 0, limit, offset, href: "", next: null, previous: null };
     
-    return validated as SpotifyPaginatedResponse<{ track: SpotifyTrack | null }>;
+    // Cache for 5 minutes
+    this.cache.set(cacheKey, result, CacheTTL.MEDIUM);
+    
+    return result;
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // Cache Management
+  // ─────────────────────────────────────────────────────────────
+
+  /**
+   * Invalidate saved tracks cache (call when user likes/unlikes a song)
+   */
+  invalidateSavedTracksCache(): void {
+    this.cache.invalidatePattern("saved-tracks:");
+  }
+
+  /**
+   * Invalidate playlists cache (call when playlists are added/removed)
+   */
+  invalidatePlaylistsCache(): void {
+    this.cache.invalidatePattern("playlists:");
+  }
+
+  /**
+   * Invalidate specific playlist tracks cache
+   */
+  invalidatePlaylistTracksCache(playlistId: string): void {
+    this.cache.invalidatePattern(`playlist-tracks:${playlistId}:`);
+  }
+
+  /**
+   * Clear all caches
+   */
+  clearAllCaches(): void {
+    this.cache.clear();
+  }
+
+  /**
+   * Get cache statistics for debugging
+   */
+  getCacheStats() {
+    return this.cache.getStats();
   }
 
   /**

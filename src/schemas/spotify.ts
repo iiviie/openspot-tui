@@ -10,17 +10,17 @@ import { z } from "zod";
 // ============================================================================
 
 /**
- * Spotify external URLs
+ * Spotify external URLs - lenient to handle various formats
  */
 const ExternalUrlsSchema = z.object({
-  spotify: z.string().url(),
+  spotify: z.string().optional(),
 }).passthrough(); // Allow additional fields
 
 /**
- * Spotify image object
+ * Spotify image object - lenient validation
  */
 const ImageSchema = z.object({
-  url: z.string().url(),
+  url: z.string(),
   height: z.number().nullable().optional(),
   width: z.number().nullable().optional(),
 });
@@ -29,7 +29,7 @@ const ImageSchema = z.object({
  * Spotify followers object
  */
 const FollowersSchema = z.object({
-  href: z.string().url().nullable(),
+  href: z.string().nullable().optional(),
   total: z.number(),
 });
 
@@ -41,24 +41,24 @@ export const SpotifyArtistSchema = z.object({
   id: z.string(),
   name: z.string(),
   uri: z.string(),
-  href: z.string().url(),
-  external_urls: ExternalUrlsSchema,
+  href: z.string().optional(),
+  external_urls: ExternalUrlsSchema.optional(),
   type: z.literal("artist"),
   images: z.array(ImageSchema).optional(),
   followers: FollowersSchema.optional(),
   genres: z.array(z.string()).optional(),
   popularity: z.number().min(0).max(100).optional(),
-});
+}).passthrough();
 
 // Simplified artist (used in tracks)
 export const SimplifiedArtistSchema = z.object({
   id: z.string(),
   name: z.string(),
   uri: z.string(),
-  href: z.string().url(),
-  external_urls: ExternalUrlsSchema,
+  href: z.string().optional(),
+  external_urls: ExternalUrlsSchema.optional(),
   type: z.literal("artist"),
-});
+}).passthrough();
 
 // ============================================================================
 // Album
@@ -68,16 +68,16 @@ export const SimplifiedAlbumSchema = z.object({
   id: z.string(),
   name: z.string(),
   uri: z.string(),
-  href: z.string().url(),
-  external_urls: ExternalUrlsSchema,
+  href: z.string().optional(),
+  external_urls: ExternalUrlsSchema.optional(),
   type: z.literal("album"),
-  album_type: z.enum(["album", "single", "compilation"]),
-  images: z.array(ImageSchema),
-  release_date: z.string(),
-  release_date_precision: z.enum(["year", "month", "day"]),
-  total_tracks: z.number(),
-  artists: z.array(SimplifiedArtistSchema),
-});
+  album_type: z.enum(["album", "single", "compilation"]).optional(),
+  images: z.array(ImageSchema).optional().default([]),
+  release_date: z.string().optional(),
+  release_date_precision: z.enum(["year", "month", "day"]).optional(),
+  total_tracks: z.number().optional(),
+  artists: z.array(SimplifiedArtistSchema).optional().default([]),
+}).passthrough();
 
 export const SpotifyAlbumSchema = SimplifiedAlbumSchema.extend({
   genres: z.array(z.string()),
@@ -97,20 +97,20 @@ export const SpotifyTrackSchema = z.object({
   id: z.string(),
   name: z.string(),
   uri: z.string(),
-  href: z.string().url(),
-  external_urls: ExternalUrlsSchema,
+  href: z.string().optional(),
+  external_urls: ExternalUrlsSchema.optional(),
   type: z.literal("track"),
   duration_ms: z.number().min(0),
-  explicit: z.boolean(),
+  explicit: z.boolean().optional(),
   popularity: z.number().min(0).max(100).optional(),
-  preview_url: z.string().url().nullable(),
-  track_number: z.number().min(1),
+  preview_url: z.string().nullable().optional(),
+  track_number: z.number().min(1).optional(),
   disc_number: z.number().min(1).optional().default(1),
   is_local: z.boolean().optional().default(false),
   is_playable: z.boolean().optional().default(true),
-  artists: z.array(SimplifiedArtistSchema),
-  album: SimplifiedAlbumSchema,
-});
+  artists: z.array(SimplifiedArtistSchema).optional().default([]),
+  album: SimplifiedAlbumSchema.optional(),
+}).passthrough();
 
 // ============================================================================
 // Playlist
@@ -120,24 +120,24 @@ export const SpotifyPlaylistSchema = z.object({
   id: z.string(),
   name: z.string(),
   uri: z.string(),
-  href: z.string().url(),
-  external_urls: ExternalUrlsSchema,
+  href: z.string().optional(),
+  external_urls: ExternalUrlsSchema.optional(),
   type: z.literal("playlist"),
-  description: z.string().nullable(),
-  public: z.boolean().nullable(),
-  collaborative: z.boolean(),
-  images: z.array(ImageSchema),
+  description: z.string().nullable().optional(),
+  public: z.boolean().nullable().optional(),
+  collaborative: z.boolean().optional(),
+  images: z.array(ImageSchema).nullable().optional().transform(val => val ?? []),
   owner: z.object({
     id: z.string(),
-    display_name: z.string().nullable(),
-    uri: z.string(),
-  }),
+    display_name: z.string().nullable().optional(),
+    uri: z.string().optional(),
+  }).passthrough(),
   tracks: z.object({
-    href: z.string().url(),
+    href: z.string().optional(),
     total: z.number(),
-  }),
-  snapshot_id: z.string(),
-});
+  }).optional(),
+  snapshot_id: z.string().optional(),
+}).passthrough();
 
 // ============================================================================
 // Paginated Responses
@@ -145,14 +145,14 @@ export const SpotifyPlaylistSchema = z.object({
 
 export const PaginatedResponseSchema = <T extends z.ZodTypeAny>(itemSchema: T) =>
   z.object({
-    href: z.string().url(),
+    href: z.string().optional(),
     items: z.array(itemSchema),
     limit: z.number(),
-    next: z.string().url().nullable(),
+    next: z.string().nullable().optional(),
     offset: z.number(),
-    previous: z.string().url().nullable(),
+    previous: z.string().nullable().optional(),
     total: z.number(),
-  });
+  }).passthrough();
 
 // Specific paginated types
 export const PaginatedTracksSchema = PaginatedResponseSchema(SpotifyTrackSchema);
@@ -176,14 +176,14 @@ export const PaginatedSavedTracksSchema = PaginatedResponseSchema(SavedTrackSche
 // ============================================================================
 
 export const PlaylistTrackSchema = z.object({
-  added_at: z.string(),
+  added_at: z.string().nullable().optional(),
   added_by: z.object({
     id: z.string(),
-    uri: z.string(),
-  }),
-  is_local: z.boolean(),
+    uri: z.string().optional(),
+  }).passthrough().optional(),
+  is_local: z.boolean().optional(),
   track: SpotifyTrackSchema.nullable(),
-});
+}).passthrough();
 
 export const PaginatedPlaylistTracksSchema = PaginatedResponseSchema(PlaylistTrackSchema);
 
@@ -244,7 +244,7 @@ export function safeValidate<T>(
   
   if (!result.success) {
     console.error(`[Validation Error] ${context}:`);
-    console.error(result.error.issues);
+    console.error(JSON.stringify(result.error.issues, null, 2));
     return null;
   }
   

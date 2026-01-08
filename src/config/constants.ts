@@ -28,7 +28,64 @@ export const STATUS_BAR_HEIGHT = NOW_PLAYING_HEIGHT;
 export const TRACK_END_THRESHOLD_MS = 2000;  // Detect track end within 2s of completion
 export const SEEK_STEP_MS = 5000;            // Seek forward/backward by 5s
 export const UPDATE_INTERVAL_MS = 1000;      // Update UI every second
-export const TOKEN_REFRESH_BUFFER_MS = 5 * 60 * 1000; // Refresh token 5 min before expiry
+export const PLAYBACK_UPDATE_DELAY_MS = 500; // Delay before updating UI after playback action
+
+/**
+ * Authentication constants
+ */
+export const AUTH_TIMEOUT_MS = 5 * 60 * 1000;           // 5 minutes auth timeout
+export const TOKEN_REFRESH_BUFFER_MS = 5 * 60 * 1000;   // Refresh token 5 min before expiry
+export const DEFAULT_CALLBACK_PORT = 8888;
+
+/**
+ * PKCE constants (OAuth 2.0)
+ */
+export const PKCE_VERIFIER_BYTES = 64;      // Random bytes for code verifier
+export const PKCE_VERIFIER_LENGTH = 128;    // Final code verifier string length
+
+/**
+ * API constants
+ */
+export const SPOTIFY_API_BASE = "https://api.spotify.com/v1";
+export const DEFAULT_RATE_LIMIT_RETRY_SECONDS = 5;
+
+/**
+ * Pagination defaults (Spotify API limits)
+ */
+export const API_LIMITS = {
+  SAVED_TRACKS: 50,        // Max 50 per request
+  PLAYLISTS: 50,           // Max 50 per request
+  PLAYLIST_TRACKS: 100,    // Max 100 per request
+  SEARCH_RESULTS: 20,      // Default search limit
+  ALBUM_TRACKS: 50,        // Max 50 per request
+} as const;
+
+/**
+ * Cache configuration
+ */
+export const CACHE_CONFIG = {
+  DEFAULT_TTL_MS: 5 * 60 * 1000,       // 5 minutes default
+  CLEANUP_INTERVAL_MS: 10 * 60 * 1000, // Garbage collection every 10 minutes
+} as const;
+
+/**
+ * Cache TTL values (in milliseconds)
+ */
+export const CACHE_TTL = {
+  SHORT: 2 * 60 * 1000,      // 2 minutes - for search results
+  MEDIUM: 5 * 60 * 1000,     // 5 minutes - default
+  LONG: 15 * 60 * 1000,      // 15 minutes - for rarely changing data
+  VERY_LONG: 60 * 60 * 1000, // 1 hour - for static data
+} as const;
+
+/**
+ * HTTP Status Codes
+ */
+export const HTTP_STATUS = {
+  OK: 200,
+  NO_CONTENT: 204,
+  RATE_LIMITED: 429,
+} as const;
 
 /**
  * Library menu items
@@ -63,3 +120,8 @@ export const UI_STRINGS = {
   noTrack: "No track playing",
   controls: "[<] [>] [||]  q:quit",
 } as const;
+
+/**
+ * Default market for Spotify API
+ */
+export const DEFAULT_MARKET = "US";
