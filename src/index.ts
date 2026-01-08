@@ -4,6 +4,32 @@ import {
   TextRenderable,
   ConsolePosition
 } from "@opentui/core";
+import { spawnSync } from "child_process";
+
+// Cleanup function to restore terminal state
+function cleanupTerminal() {
+  // Disable all mouse tracking modes
+  process.stdout.write("\x1b[?1000l"); // Disable mouse click tracking
+  process.stdout.write("\x1b[?1002l"); // Disable mouse button tracking
+  process.stdout.write("\x1b[?1003l"); // Disable all mouse tracking
+  process.stdout.write("\x1b[?1006l"); // Disable SGR mouse mode
+  process.stdout.write("\x1b[?1015l"); // Disable urxvt mouse mode
+  // Show cursor
+  process.stdout.write("\x1b[?25h");
+  // Exit alternate screen buffer
+  process.stdout.write("\x1b[?1049l");
+  // Clear screen and reset cursor position
+  process.stdout.write("\x1b[2J\x1b[H");
+  // Reset all attributes
+  process.stdout.write("\x1b[0m");
+  
+  // Use stty sane to fully reset terminal state
+  try {
+    spawnSync("stty", ["sane"], { stdio: "inherit" });
+  } catch {
+    // Ignore if stty fails
+  }
+}
 
 // Zinc/Gray color scheme
 const colors = {
@@ -253,13 +279,30 @@ async function main() {
     });
   }
 
+  // Graceful exit function
+  function exitApp() {
+    // Try to stop the renderer if it has a stop method
+    try {
+      if (typeof (renderer as any).stop === "function") {
+        (renderer as any).stop();
+      }
+      if (typeof (renderer as any).destroy === "function") {
+        (renderer as any).destroy();
+      }
+    } catch {
+      // Ignore errors
+    }
+    cleanupTerminal();
+    process.exit(0);
+  }
+
   // Handle keyboard input
   (renderer.keyInput as any).on("keypress", (key: { ctrl: boolean; name: string }) => {
     if (key.ctrl && key.name === "c") {
-      process.exit(0);
+      exitApp();
     }
     if (key.name === "q") {
-      process.exit(0);
+      exitApp();
     }
     if (key.name === "up" || key.name === "k") {
       selectedIndex = Math.max(0, selectedIndex - 1);
@@ -274,7 +317,16 @@ async function main() {
     }
   });
 
+  // Handle process signals for cleanup
+  process.on("SIGINT", exitApp);
+  process.on("SIGTERM", exitApp);
+  process.on("exit", cleanupTerminal);
+
   console.log("Use arrow keys or j/k to navigate, Enter to select, q to quit");
 }
 
-main().catch(console.error);
+main().catch((err) => {
+  cleanupTerminal();
+  console.error(err);
+  process.exit(1);
+});
