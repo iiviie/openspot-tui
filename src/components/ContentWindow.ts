@@ -11,6 +11,7 @@ export interface ContentItem {
   uri: string;
   title: string;
   subtitle: string;
+  duration?: string;
   type: "track" | "playlist" | "album" | "artist";
 }
 
@@ -151,9 +152,10 @@ export class ContentWindow {
       id: track.id,
       uri: track.uri,
       title: track.name,
-      subtitle: `${track.artists.map(a => a.name).join(", ")} - ${this.formatDuration(track.duration_ms)}`,
+      subtitle: track.artists.map(a => a.name).join(", "),
+      duration: this.formatDuration(track.duration_ms),
       type: "track" as const,
-    }));
+    })) as any;
 
     if (this.results.length === 0) {
       this.statusMessage = "No tracks found";
@@ -241,13 +243,42 @@ export class ContentWindow {
         let content: string;
         if (result.type === "playlist") {
           content = `${prefix}${result.title} (${result.subtitle})`;
+          // Truncate if needed
+          if (content.length > maxWidth) {
+            content = content.substring(0, maxWidth - 3) + "...";
+          }
+        } else if (result.type === "track") {
+          // Track formatting with aligned duration column
+          const durationWidth = 6; // " 3:45 " format
+          const availableWidth = maxWidth - durationWidth;
+          const duration = (result as any).duration || "";
+          
+          // Split available width: ~60% for title, ~40% for artist
+          const titleWidth = Math.floor(availableWidth * 0.5);
+          const artistWidth = availableWidth - titleWidth - 3; // -3 for " - "
+          
+          // Truncate title and artist
+          let title = result.title;
+          if (title.length > titleWidth) {
+            title = title.substring(0, titleWidth - 1) + "…";
+          }
+          
+          let artist = result.subtitle;
+          if (artist.length > artistWidth) {
+            artist = artist.substring(0, artistWidth - 1) + "…";
+          }
+          
+          // Pad title to fixed width for alignment
+          title = title.padEnd(titleWidth, " ");
+          
+          // Build content with aligned duration
+          content = `${prefix}${title} - ${artist}`.padEnd(maxWidth - durationWidth, " ") + duration.padStart(durationWidth, " ");
         } else {
           content = `${prefix}${result.title} - ${result.subtitle}`;
-        }
-
-        // Truncate if needed
-        if (content.length > maxWidth) {
-          content = content.substring(0, maxWidth - 3) + "...";
+          // Truncate if needed
+          if (content.length > maxWidth) {
+            content = content.substring(0, maxWidth - 3) + "...";
+          }
         }
 
         (this.items[i] as any).content = content;
