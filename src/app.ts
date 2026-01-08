@@ -67,7 +67,7 @@ export class App {
   private inputMode: "normal" | "search" = "normal";
   
   // Navigation stack for back functionality
-  private viewStack: string[] = ["playlists"];
+  private viewStack: string[] = ["songs"];
 
   /**
    * Initialize and start the application
@@ -82,8 +82,8 @@ export class App {
     this.setupSignalHandlers();
     this.startUpdateLoop();
     
-    // Load playlists as default view
-    await this.loadPlaylists();
+    // Load saved tracks (Songs) as default view
+    await this.loadSavedTracks();
   }
 
   /**
@@ -325,18 +325,18 @@ export class App {
    */
   private async goBack(): Promise<void> {
     if (this.viewStack.length <= 1) {
-      // Already at root, just reload playlists
-      await this.loadPlaylists();
+      // Already at root, just reload songs
+      await this.loadSavedTracks();
       return;
     }
 
     this.viewStack.pop();
     const previousView = this.viewStack[this.viewStack.length - 1];
 
-    if (previousView === "playlists") {
-      await this.loadPlaylists();
-    } else if (previousView === "songs") {
+    if (previousView === "songs") {
       await this.loadSavedTracks();
+    } else if (previousView === "playlists") {
+      await this.loadPlaylists();
     } else if (previousView.startsWith("playlist:")) {
       // Go back to playlists list instead of previous playlist
       await this.loadPlaylists();
