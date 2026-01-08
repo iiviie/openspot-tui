@@ -99,3 +99,8 @@ export type { CliRenderer, TextRenderable, BoxRenderable };
  * Re-export Spotify types
  */
 export * from "./spotify";
+
+/**
+ * Re-export MPRIS types
+ */
+export * from "./mpris";
