@@ -10,6 +10,9 @@ import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import open from "open";
+import { getLogger } from "../utils";
+
+const logger = getLogger("SpotifydManager");
 
 // Path where postinstall script downloads spotifyd
 const DOWNLOADED_BINARY_PATH = join(
@@ -399,7 +402,7 @@ export class SpotifydManager {
 				// Handle unexpected exit
 				this.process.on("exit", (code) => {
 					if (code !== 0 && code !== null) {
-						console.error(`spotifyd exited with code ${code}`);
+						logger.error(`spotifyd exited with code ${code}`);
 					}
 					this.process = null;
 					this.managedByUs = false;

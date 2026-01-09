@@ -1,6 +1,7 @@
 import { BoxRenderable, TextRenderable } from "@opentui/core";
 import { colors } from "../config/colors";
 import type { CliRenderer, LayoutDimensions } from "../types";
+import { TypedBox, TypedText, typedBox, typedText } from "../ui";
 
 /**
  * Command definition
@@ -30,6 +31,13 @@ export class CommandPalette {
 	private searchInput: TextRenderable;
 	private commandItems: TextRenderable[] = [];
 
+	// Typed wrappers for safe property updates
+	private typedOverlay!: TypedBox;
+	private typedContainer!: TypedBox;
+	private typedTitleBar!: TypedText;
+	private typedSearchInput!: TypedText;
+	private typedCommandItems: TypedText[] = [];
+
 	private commands: Command[] = [];
 	private filteredCommands: Command[] = [];
 	private selectedIndex: number = 0;
@@ -55,6 +63,13 @@ export class CommandPalette {
 		this.titleBar = this.createTitleBar();
 		this.searchInput = this.createSearchInput();
 		this.commandItems = this.createCommandItems();
+
+		// Wrap renderables for type-safe updates
+		this.typedOverlay = typedBox(this.overlay);
+		this.typedContainer = typedBox(this.container);
+		this.typedTitleBar = typedText(this.titleBar);
+		this.typedSearchInput = typedText(this.searchInput);
+		this.typedCommandItems = this.commandItems.map((item) => typedText(item));
 	}
 
 	/**
@@ -307,10 +322,10 @@ export class CommandPalette {
 
 		// Update search input
 		const searchContent = this.searchText ? this.searchText : "Search";
-		(this.searchInput as any).content = searchContent;
-		(this.searchInput as any).fg = this.searchText
-			? colors.textPrimary
-			: colors.textDim;
+		this.typedSearchInput.update({
+			content: searchContent,
+			fg: this.searchText ? colors.textPrimary : colors.textDim,
+		});
 
 		// Group commands by category
 		const grouped = new Map<string, Command[]>();
@@ -354,9 +369,11 @@ export class CommandPalette {
 				const item = displayItems[i];
 				if (item.type === "category") {
 					// Category header styling (muted purple like in the image)
-					(this.commandItems[i] as any).content = item.content;
-					(this.commandItems[i] as any).fg = CATEGORY_COLOR;
-					(this.commandItems[i] as any).bg = colors.bgSecondary;
+					this.typedCommandItems[i].update({
+						content: item.content,
+						fg: CATEGORY_COLOR,
+						bg: colors.bgSecondary,
+					});
 				} else {
 					// Command item styling
 					const shortcut = item.command?.shortcut
@@ -374,17 +391,17 @@ export class CommandPalette {
 					const padding = innerWidth - label.length - shortcut.length;
 					const content = label + " ".repeat(Math.max(1, padding)) + shortcut;
 
-					(this.commandItems[i] as any).content = content;
-					(this.commandItems[i] as any).fg = item.isSelected
-						? colors.textPrimary
-						: colors.textSecondary;
-					(this.commandItems[i] as any).bg = item.isSelected
-						? colors.highlight
-						: colors.bgSecondary;
+					this.typedCommandItems[i].update({
+						content,
+						fg: item.isSelected ? colors.textPrimary : colors.textSecondary,
+						bg: item.isSelected ? colors.highlight : colors.bgSecondary,
+					});
 				}
 			} else {
-				(this.commandItems[i] as any).content = "";
-				(this.commandItems[i] as any).bg = colors.bgSecondary;
+				this.typedCommandItems[i].update({
+					content: "",
+					bg: colors.bgSecondary,
+				});
 			}
 		}
 	}
@@ -434,32 +451,35 @@ export class CommandPalette {
 		const innerWidth = this.paletteWidth - 2;
 
 		// Update overlay to cover full screen
-		(this.overlay as any).width = layout.termWidth;
-		(this.overlay as any).height = layout.termHeight;
+		this.typedOverlay.update({
+			width: layout.termWidth,
+			height: layout.termHeight,
+		});
 
 		// Update container
-		(this.container as any).width = this.paletteWidth;
-		(this.container as any).height = this.paletteHeight;
-		(this.container as any).left = left;
-		(this.container as any).top = top;
+		this.typedContainer.update({
+			width: this.paletteWidth,
+			height: this.paletteHeight,
+			left,
+			top,
+		});
 
 		// Update title bar
 		const title = "Commands";
 		const escHint = "esc";
 		const padding = innerWidth - title.length - escHint.length;
-		(this.titleBar as any).content =
-			title + " ".repeat(Math.max(1, padding)) + escHint;
-		(this.titleBar as any).left = left + 1;
-		(this.titleBar as any).top = top + 1;
+		this.typedTitleBar.update({
+			content: title + " ".repeat(Math.max(1, padding)) + escHint,
+			left: left + 1,
+			top: top + 1,
+		});
 
 		// Update search input
-		(this.searchInput as any).left = left + 2;
-		(this.searchInput as any).top = top + 3;
+		this.typedSearchInput.setPosition(left + 2, top + 3);
 
 		// Update command items positions
 		for (let i = 0; i < this.commandItems.length; i++) {
-			(this.commandItems[i] as any).left = left + 1;
-			(this.commandItems[i] as any).top = top + 5 + i;
+			this.typedCommandItems[i].setPosition(left + 1, top + 5 + i);
 		}
 
 		if (this.isVisible) {

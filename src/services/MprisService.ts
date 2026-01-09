@@ -4,6 +4,7 @@
  */
 
 import dbus from "dbus-next";
+import { getLogger } from "../utils";
 import type {
 	LoopStatus,
 	MprisMetadata,
@@ -11,6 +12,8 @@ import type {
 	NowPlayingInfo,
 	PlaybackStatus,
 } from "../types/mpris";
+
+const logger = getLogger("MprisService");
 
 const MPRIS_PREFIX = "org.mpris.MediaPlayer2";
 const MPRIS_PATH = "/org/mpris/MediaPlayer2";
@@ -38,7 +41,7 @@ export class MprisService {
 			// Find spotifyd's MPRIS service name
 			this.serviceName = await this.findSpotifydService();
 			if (!this.serviceName) {
-				console.error("spotifyd MPRIS service not found. Is spotifyd running?");
+				logger.error("spotifyd MPRIS service not found. Is spotifyd running?");
 				return false;
 			}
 
@@ -55,7 +58,7 @@ export class MprisService {
 			this.connected = true;
 			return true;
 		} catch (error) {
-			console.error("Failed to connect to MPRIS:", error);
+			logger.error("Failed to connect to MPRIS", error);
 			return false;
 		}
 	}
@@ -85,7 +88,7 @@ export class MprisService {
 
 			return spotifyService || null;
 		} catch (error) {
-			console.error("Failed to list D-Bus names:", error);
+			logger.error("Failed to list D-Bus names", error);
 			return null;
 		}
 	}

@@ -35,7 +35,9 @@ import type {
 } from "./types";
 import type { NowPlayingInfo } from "./types/mpris";
 import type { SpotifyTrack } from "./types/spotify";
-import { calculateLayout, cleanupTerminal } from "./utils";
+import { calculateLayout, cleanupTerminal, getLogger } from "./utils";
+
+const logger = getLogger("App");
 
 /**
  * Focus panel type
@@ -141,12 +143,11 @@ export class App {
 			// Auto-activate spotifyd as playback device (so user doesn't need Spotify open)
 			await this.activateSpotifydDevice();
 		} catch (error) {
-			console.error("Fatal error during startup:");
-			console.error(error);
-			console.error("\nPlease check:");
-			console.error("  1. spotifyd is installed and accessible");
-			console.error("  2. You are authenticated (bun run auth)");
-			console.error("  3. Your terminal supports the required features");
+			logger.error("Fatal error during startup", error);
+			logger.always("\nPlease check:");
+			logger.always("  1. spotifyd is installed and accessible");
+			logger.always("  2. You are authenticated (bun run auth)");
+			logger.always("  3. Your terminal supports the required features");
 			this.cleanup();
 			process.exit(1);
 		}
@@ -162,10 +163,8 @@ export class App {
 
 		if (!result.success) {
 			// Warn but don't exit - user can authenticate later via Ctrl+P
-			console.log("");
-			console.log("⚠️  spotifyd not running");
-			console.log("   Press Ctrl+P → 'Authenticate Spotifyd' to set up");
-			console.log("");
+			logger.warn("spotifyd not running");
+			logger.always("   Press Ctrl+P → 'Authenticate Spotifyd' to set up\n");
 			// Don't exit - allow app to run without spotifyd
 		} else if (this.spotifydManager.isManagedByUs()) {
 			// Give spotifyd a moment to fully initialize its D-Bus interface
@@ -181,10 +180,8 @@ export class App {
 		const connected = await this.mpris.connect();
 
 		if (!connected) {
-			console.log(
-				"Warning: Could not connect to spotifyd. Make sure it's running.",
-			);
-			console.log("Run: spotifyd --no-daemon");
+			logger.warn("Could not connect to spotifyd. Make sure it's running.");
+			logger.always("Run: spotifyd --no-daemon");
 		}
 	}
 
@@ -751,7 +748,7 @@ export class App {
 			// Update UI after short delay to let playback start
 			setTimeout(() => this.updateFromMpris(), PLAYBACK_UPDATE_DELAY_MS);
 		} catch (error) {
-			console.error("Failed to play track:", error);
+			logger.error("Failed to play track", error);
 		}
 	}
 
@@ -835,7 +832,7 @@ export class App {
 				this.updateConnectionStatus();
 			} catch (error) {
 				// Log error but keep interval running
-				console.error("Update loop error:", error);
+				logger.error("Update loop error", error);
 			}
 		}, UPDATE_INTERVAL_MS); // Update every second
 	}

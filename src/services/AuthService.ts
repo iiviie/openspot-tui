@@ -13,7 +13,10 @@ import type {
 	SpotifyTokens,
 	StoredCredentials,
 } from "../types/spotify";
+import { getLogger } from "../utils";
 import { type ConfigService, getConfigService } from "./ConfigService";
+
+const logger = getLogger("AuthService");
 
 /**
  * Spotify OAuth2 Authentication Service
@@ -266,11 +269,11 @@ export class AuthService {
 					state,
 				);
 
-				console.log("\n🎵 Spotify Authentication Required\n");
-				console.log("Opening your browser to login with Spotify...\n");
-				console.log("If the browser doesn't open, visit this URL:\n");
-				console.log(authUrl);
-				console.log("\nWaiting for authentication...\n");
+				logger.always("\n🎵 Spotify Authentication Required\n");
+				logger.always("Opening your browser to login with Spotify...\n");
+				logger.always("If the browser doesn't open, visit this URL:\n");
+				logger.always(authUrl);
+				logger.always("\nWaiting for authentication...\n");
 
 				// Try to open browser
 				try {
@@ -278,7 +281,7 @@ export class AuthService {
 					await open.default(authUrl);
 				} catch {
 					// open package not available, user needs to manually open URL
-					console.log(
+					logger.always(
 						"(Could not open browser automatically - please open the URL above)",
 					);
 				}

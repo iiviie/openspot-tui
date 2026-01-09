@@ -4,7 +4,9 @@
  */
 
 import { App } from "./app";
-import { cleanupTerminal } from "./utils";
+import { cleanupTerminal, getLogger } from "./utils";
+
+const logger = getLogger("Main");
 
 /**
  * Main entry point
@@ -17,6 +19,6 @@ async function main(): Promise<void> {
 // Start the application
 main().catch((error) => {
 	cleanupTerminal();
-	console.error("Fatal error:", error);
+	logger.error("Fatal error", error);
 	process.exit(1);
 });

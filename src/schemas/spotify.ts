@@ -4,6 +4,9 @@
  */
 
 import { z } from "zod";
+import { getLogger } from "../utils";
+
+const logger = getLogger("SpotifySchemas");
 
 // ============================================================================
 // Base Types
@@ -281,8 +284,9 @@ export function safeValidate<T>(
 	const result = schema.safeParse(data);
 
 	if (!result.success) {
-		console.error(`[Validation Error] ${context}:`);
-		console.error(JSON.stringify(result.error.issues, null, 2));
+		logger.error(`Validation failed for ${context}`, {
+			issues: result.error.issues,
+		});
 		return null;
 	}
 
