@@ -142,6 +142,31 @@ export class NowPlaying {
   }
 
   /**
+   * Update layout dimensions (for terminal resize)
+   */
+  updateLayout(layout: LayoutDimensions): void {
+    this.layout = layout;
+    (this as any).progressBarWidth = Math.max(20, Math.floor(layout.termWidth * 0.6));
+
+    // Update container
+    (this.container as any).width = layout.termWidth;
+    (this.container as any).height = layout.nowPlayingHeight;
+    (this.container as any).left = 0;
+    (this.container as any).top = layout.nowPlayingY;
+
+    // Update track and progress lines with new positions
+    const trackContent = this.getTrackLineContent();
+    const trackLeftPos = Math.floor((layout.termWidth - trackContent.length) / 2);
+    (this.trackLine as any).left = Math.max(2, trackLeftPos);
+    (this.trackLine as any).top = layout.nowPlayingY + 1;
+
+    const progressContent = this.getProgressLineContent();
+    const progressLeftPos = Math.floor((layout.termWidth - progressContent.length) / 2);
+    (this.progressLine as any).left = Math.max(2, progressLeftPos);
+    (this.progressLine as any).top = layout.nowPlayingY + 3;
+  }
+
+  /**
    * Cleanup resources
    */
   destroy(): void {

@@ -267,6 +267,53 @@ export class StatusSidebar {
   }
 
   /**
+   * Update layout dimensions (for terminal resize)
+   */
+  updateLayout(layout: LayoutDimensions): void {
+    this.layout = layout;
+
+    // Update container
+    (this.container as any).width = layout.rightSidebarWidth;
+    (this.container as any).height = layout.rightSidebarHeight;
+    (this.container as any).left = layout.rightSidebarX;
+    (this.container as any).top = layout.rightSidebarY;
+
+    // Update title
+    (this.title as any).left = layout.rightSidebarX + 2;
+    (this.title as any).top = layout.rightSidebarY + 1;
+
+    // Update playback status
+    (this.playbackStatus as any).left = layout.rightSidebarX + 2;
+    (this.playbackStatus as any).top = layout.rightSidebarY + 3;
+
+    // Update volume label
+    (this.volumeLabel as any).left = layout.rightSidebarX + 2;
+    (this.volumeLabel as any).top = layout.rightSidebarY + 5;
+
+    // Update shuffle label
+    (this.shuffleLabel as any).left = layout.rightSidebarX + 2;
+    (this.shuffleLabel as any).top = layout.rightSidebarY + 6;
+
+    // Update repeat label
+    (this.repeatLabel as any).left = layout.rightSidebarX + 2;
+    (this.repeatLabel as any).top = layout.rightSidebarY + 7;
+
+    // Update queue title
+    (this.queueTitle as any).left = layout.rightSidebarX + 2;
+    (this.queueTitle as any).top = layout.rightSidebarY + 9;
+
+    // Update queue items
+    const startY = layout.rightSidebarY + 11;
+    this.queueItems.forEach((item, index) => {
+      (item as any).left = layout.rightSidebarX + 2;
+      (item as any).top = startY + index;
+    });
+
+    // Refresh queue display with new dimensions
+    this.updateQueueDisplay();
+  }
+
+  /**
    * Cleanup resources
    */
   destroy(): void {

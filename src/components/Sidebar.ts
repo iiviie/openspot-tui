@@ -146,6 +146,29 @@ export class Sidebar {
   }
 
   /**
+   * Update layout dimensions (for terminal resize)
+   */
+  updateLayout(layout: LayoutDimensions): void {
+    this.layout = layout;
+
+    // Update container
+    (this.container as any).width = layout.leftSidebarWidth;
+    (this.container as any).height = layout.leftSidebarHeight;
+    (this.container as any).left = layout.leftSidebarX;
+    (this.container as any).top = layout.leftSidebarY;
+
+    // Update title
+    (this.title as any).left = layout.leftSidebarX + 2;
+    (this.title as any).top = layout.leftSidebarY + 1;
+
+    // Update menu items
+    this.menuItems.forEach((item, index) => {
+      (item as any).left = layout.leftSidebarX + 2;
+      (item as any).top = layout.leftSidebarY + 3 + index;
+    });
+  }
+
+  /**
    * Cleanup resources
    */
   destroy(): void {

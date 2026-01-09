@@ -234,6 +234,12 @@ export class ContentWindow {
 
     // Update item contents based on scroll offset
     for (let i = 0; i < this.items.length; i++) {
+      // Hide items that are beyond the visible area (important for resize)
+      if (i >= maxVisibleItems) {
+        (this.items[i] as any).content = "";
+        continue;
+      }
+
       const resultIndex = this.scrollOffset + i;
       
       if (resultIndex < this.results.length) {
@@ -362,6 +368,32 @@ export class ContentWindow {
   render(): void {
     this.renderer.root.add(this.container);
     this.renderer.root.add(this.headerText);
+  }
+
+  /**
+   * Update layout dimensions (for terminal resize)
+   */
+  updateLayout(layout: LayoutDimensions): void {
+    this.layout = layout;
+
+    // Update container
+    (this.container as any).width = layout.centerWidth;
+    (this.container as any).height = layout.contentWindowHeight;
+    (this.container as any).left = layout.centerX;
+    (this.container as any).top = layout.contentWindowY;
+
+    // Update header
+    (this.headerText as any).left = layout.centerX + 2;
+    (this.headerText as any).top = layout.contentWindowY + 1;
+
+    // Update existing items positions
+    this.items.forEach((item, index) => {
+      (item as any).left = layout.centerX + 2;
+      (item as any).top = layout.contentWindowY + 3 + index;
+    });
+
+    // Rebuild items to handle new visible area size
+    this.rebuildItems();
   }
 
   /**

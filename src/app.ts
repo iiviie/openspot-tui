@@ -807,6 +807,24 @@ export class App {
     process.on("SIGINT", () => this.exit());
     process.on("SIGTERM", () => this.exit());
     process.on("exit", () => cleanupTerminal());
+
+    // Listen for terminal resize events
+    process.stdout.on("resize", () => this.handleResize());
+  }
+
+  /**
+   * Handle terminal resize event
+   */
+  private handleResize(): void {
+    // Recalculate layout based on new terminal size
+    this.layout = calculateLayout();
+
+    // Update all components with new layout
+    this.sidebar?.updateLayout(this.layout);
+    this.searchBar?.updateLayout(this.layout);
+    this.contentWindow?.updateLayout(this.layout);
+    this.statusSidebar?.updateLayout(this.layout);
+    this.nowPlaying?.updateLayout(this.layout);
   }
 
   /**

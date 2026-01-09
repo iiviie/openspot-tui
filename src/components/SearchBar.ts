@@ -170,6 +170,23 @@ export class SearchBar {
   }
 
   /**
+   * Update layout dimensions (for terminal resize)
+   */
+  updateLayout(layout: LayoutDimensions): void {
+    this.layout = layout;
+
+    // Update container
+    (this.container as any).width = layout.centerWidth;
+    (this.container as any).height = layout.searchBarHeight;
+    (this.container as any).left = layout.centerX;
+    (this.container as any).top = layout.searchBarY;
+
+    // Update label
+    (this.label as any).left = layout.centerX + 2;
+    (this.label as any).top = layout.searchBarY + 1;
+  }
+
+  /**
    * Cleanup resources
    */
   destroy(): void {
