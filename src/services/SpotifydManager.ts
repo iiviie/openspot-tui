@@ -438,24 +438,57 @@ export class SpotifydManager {
 
 	/**
 	 * Stop spotifyd daemon (only if we started it)
+	 * @param force - If true, kill any running spotifyd process regardless of who started it
 	 */
-	stop(): void {
+	stop(force: boolean = false): void {
+		// First, try to stop our managed process
 		if (this.process && this.managedByUs) {
 			try {
+				const pid = this.process.pid;
 				// Send SIGTERM for graceful shutdown
 				this.process.kill("SIGTERM");
 
 				// Force kill after 2 seconds if still running
-				setTimeout(() => {
-					if (this.process && !this.process.killed) {
-						this.process.kill("SIGKILL");
-					}
-				}, 2000);
+				if (pid) {
+					setTimeout(() => {
+						try {
+							// Check if process is still running and kill it
+							process.kill(pid, 0); // Check if alive
+							process.kill(pid, "SIGKILL");
+						} catch {
+							// Process already dead
+						}
+					}, 2000);
+				}
 			} catch {
 				// Process might already be dead
 			}
 			this.process = null;
 			this.managedByUs = false;
+		}
+
+		// If force is true, kill any spotifyd process
+		if (force) {
+			this.forceKillSpotifyd();
+		}
+	}
+
+	/**
+	 * Force kill any running spotifyd process
+	 */
+	private forceKillSpotifyd(): void {
+		try {
+			const result = spawnSync("pkill", ["-f", "spotifyd"], {
+				encoding: "utf-8",
+				timeout: 5000,
+			});
+			// pkill returns 0 if at least one process was killed
+			if (result.status === 0) {
+				this.process = null;
+				this.managedByUs = false;
+			}
+		} catch {
+			// Ignore errors
 		}
 	}
 

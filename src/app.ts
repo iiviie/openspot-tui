@@ -217,8 +217,7 @@ export class App {
 	 * Update state from MPRIS
 	 */
 	private async updateFromMpris(): Promise<void> {
-		if (!this.mpris.isConnected()) return;
-
+		// Don't check isConnected() here - getNowPlaying() will auto-reconnect if needed
 		const nowPlaying = await this.mpris.getNowPlaying();
 		const now = Date.now();
 
@@ -626,7 +625,7 @@ export class App {
 			spotifydInstalled: spotifydStatus.installed,
 			spotifydRunning: spotifydStatus.running,
 			spotifydAuthenticated: spotifydStatus.authenticated,
-			mprisConnected: this.mpris ? true : false, // Basic check
+			mprisConnected: this.mpris?.isConnected() ?? false,
 		};
 
 		this.statusSidebar.updateConnectionStatus(connectionStatus);
@@ -832,6 +831,8 @@ export class App {
 					this.shuffle,
 					this.repeat,
 				);
+				// Update connection status to reflect current state
+				this.updateConnectionStatus();
 			} catch (error) {
 				// Log error but keep interval running
 				console.error("Update loop error:", error);
@@ -998,7 +999,9 @@ export class App {
 	 * Handle playback-related key presses
 	 */
 	private async handlePlaybackControls(keyName: string): Promise<void> {
-		if (!this.mpris.isConnected()) return;
+		// Try to ensure MPRIS connection (auto-reconnect if needed)
+		const connected = await this.mpris.ensureConnection();
+		if (!connected) return;
 
 		// Track if we need a full MPRIS update (for most controls)
 		// Shuffle/repeat use optimistic updates and skip the full refresh
@@ -1185,8 +1188,12 @@ export class App {
 		// Disconnect MPRIS
 		this.mpris?.disconnect();
 
-		// Stop spotifyd if we started it
-		this.spotifydManager?.stop();
+		// Stop spotifyd - force kill if we started it to ensure music stops
+		if (this.spotifydManager?.isManagedByUs()) {
+			this.spotifydManager.stop(true); // Force kill
+		} else {
+			this.spotifydManager?.stop();
+		}
 
 		// Try to stop/destroy renderer
 		try {

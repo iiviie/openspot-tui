@@ -98,15 +98,54 @@ export class MprisService {
 	}
 
 	/**
+	 * Verify the D-Bus connection is still alive by making a test call
+	 */
+	private async verifyConnection(): Promise<boolean> {
+		if (!this.connected || !this.propertiesInterface) {
+			return false;
+		}
+
+		try {
+			// Try to get a property - if this fails, connection is stale
+			await this.propertiesInterface.Get(PLAYER_INTERFACE, "PlaybackStatus");
+			return true;
+		} catch {
+			// Connection is stale
+			this.connected = false;
+			return false;
+		}
+	}
+
+	/**
+	 * Ensure we have a valid connection, reconnecting if necessary
+	 */
+	async ensureConnection(): Promise<boolean> {
+		// If we think we're connected, verify it
+		if (this.connected) {
+			const alive = await this.verifyConnection();
+			if (alive) return true;
+		}
+
+		// Try to reconnect
+		this.disconnect();
+		return await this.connect();
+	}
+
+	/**
 	 * Disconnect from D-Bus
 	 */
 	disconnect(): void {
 		if (this.bus) {
-			this.bus.disconnect();
+			try {
+				this.bus.disconnect();
+			} catch {
+				// Ignore errors during disconnect
+			}
 			this.bus = null;
 		}
 		this.playerInterface = null;
 		this.propertiesInterface = null;
+		this.serviceName = null;
 		this.connected = false;
 	}
 
@@ -342,32 +381,40 @@ export class MprisService {
 	 * Get simplified now playing info for UI
 	 */
 	async getNowPlaying(): Promise<NowPlayingInfo | null> {
-		if (!this.connected) return null;
+		// Try to ensure connection (auto-reconnect if stale)
+		const connected = await this.ensureConnection();
+		if (!connected) return null;
 
-		const [playbackStatus, metadata, position, volume, shuffle, loopStatus] =
-			await Promise.all([
-				this.getPlaybackStatus(),
-				this.getMetadata(),
-				this.getPosition(),
-				this.getVolume(),
-				this.getShuffle(),
-				this.getLoopStatus(),
-			]);
+		try {
+			const [playbackStatus, metadata, position, volume, shuffle, loopStatus] =
+				await Promise.all([
+					this.getPlaybackStatus(),
+					this.getMetadata(),
+					this.getPosition(),
+					this.getVolume(),
+					this.getShuffle(),
+					this.getLoopStatus(),
+				]);
 
-		if (!metadata) return null;
+			if (!metadata) return null;
 
-		return {
-			title: metadata.title,
-			artist: metadata.artist.join(", "),
-			album: metadata.album,
-			artUrl: metadata.artUrl,
-			durationMs: Math.floor(metadata.length / 1000),
-			positionMs: Math.floor(position / 1000),
-			isPlaying: playbackStatus === "Playing",
-			volume,
-			shuffle,
-			loopStatus,
-		};
+			return {
+				title: metadata.title,
+				artist: metadata.artist.join(", "),
+				album: metadata.album,
+				artUrl: metadata.artUrl,
+				durationMs: Math.floor(metadata.length / 1000),
+				positionMs: Math.floor(position / 1000),
+				isPlaying: playbackStatus === "Playing",
+				volume,
+				shuffle,
+				loopStatus,
+			};
+		} catch {
+			// Connection might have become stale during the call
+			this.connected = false;
+			return null;
+		}
 	}
 
 	/**
