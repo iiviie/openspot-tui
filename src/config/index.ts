@@ -1,2 +1,2 @@
-export { colors, colorSchemes } from "./colors";
+export { colorSchemes, colors } from "./colors";
 export * from "./constants";

@@ -1,9 +1,11 @@
-export { Sidebar } from "./Sidebar";
-export { NowPlaying } from "./NowPlaying";
-export { SearchBar } from "./SearchBar";
+export { CommandPalette } from "./CommandPalette";
+export type { Command } from "./CommandPalette";
 export { ContentWindow } from "./ContentWindow";
-export { StatusSidebar } from "./StatusSidebar";
-
+export { NowPlaying } from "./NowPlaying";
 // Legacy exports (deprecated - will be removed)
 export { Queue } from "./Queue";
+export { SearchBar } from "./SearchBar";
+export { Sidebar } from "./Sidebar";
 export { StatusBar } from "./StatusBar";
+export { StatusSidebar } from "./StatusSidebar";
+export type { ConnectionStatus } from "./StatusSidebar";

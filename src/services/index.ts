@@ -2,8 +2,15 @@
  * Services re-exports
  */
 
-export { ConfigService, getConfigService } from "./ConfigService";
 export { AuthService, getAuthService, SPOTIFY_CLIENT_ID } from "./AuthService";
-export { MprisService, getMprisService } from "./MprisService";
-export { SpotifyApiService, getSpotifyApiService } from "./SpotifyApiService";
-export { CacheService, getCacheService, CacheKeys, CacheTTL } from "./CacheService";
+export {
+	CacheKeys,
+	CacheService,
+	CacheTTL,
+	getCacheService,
+} from "./CacheService";
+export { ConfigService, getConfigService } from "./ConfigService";
+export { getMprisService, MprisService } from "./MprisService";
+export { getSpotifyApiService, SpotifyApiService } from "./SpotifyApiService";
+export type { SpotifydConfig, SpotifydStatus } from "./SpotifydManager";
+export { getSpotifydManager, SpotifydManager } from "./SpotifydManager";

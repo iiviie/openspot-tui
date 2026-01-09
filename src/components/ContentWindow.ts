@@ -1,18 +1,18 @@
 import { BoxRenderable, TextRenderable } from "@opentui/core";
-import type { CliRenderer, LayoutDimensions } from "../types";
-import type { SpotifyTrack, SpotifyPlaylist } from "../types/spotify";
 import { colors } from "../config/colors";
+import type { CliRenderer, LayoutDimensions } from "../types";
+import type { SpotifyPlaylist, SpotifyTrack } from "../types/spotify";
 
 /**
  * Content item types
  */
 export interface ContentItem {
-  id: string;
-  uri: string;
-  title: string;
-  subtitle: string;
-  duration?: string;
-  type: "track" | "playlist" | "album" | "artist";
+	id: string;
+	uri: string;
+	title: string;
+	subtitle: string;
+	duration?: string;
+	type: "track" | "playlist" | "album" | "artist";
 }
 
 /**
@@ -25,381 +25,401 @@ export type ContentView = "playlists" | "tracks" | "search" | "playlist-tracks";
  * Displays playlists, search results, tracks, etc.
  */
 export class ContentWindow {
-  private container: BoxRenderable;
-  private headerText: TextRenderable;
-  private items: TextRenderable[] = [];
-  private selectedIndex: number = 0;
-  private scrollOffset: number = 0;
-  private results: ContentItem[] = [];
-  private isLoading: boolean = false;
-  private statusMessage: string = "";
-  private currentView: ContentView = "playlists";
-  private isFocused: boolean = false;
+	private container: BoxRenderable;
+	private headerText: TextRenderable;
+	private items: TextRenderable[] = [];
+	private selectedIndex: number = 0;
+	private scrollOffset: number = 0;
+	private results: ContentItem[] = [];
+	private statusMessage: string = "";
+	private currentView: ContentView = "playlists";
+	private isFocused: boolean = false;
+	private isLoading: boolean = false;
 
-  // Callbacks
-  public onTrackSelect: ((uri: string) => void) | null = null;
-  public onPlaylistSelect: ((playlistId: string, playlistName: string) => void) | null = null;
+	// Callbacks
+	public onTrackSelect: ((uri: string) => void) | null = null;
+	public onPlaylistSelect:
+		| ((playlistId: string, playlistName: string) => void)
+		| null = null;
 
-  constructor(
-    private renderer: CliRenderer,
-    private layout: LayoutDimensions
-  ) {
-    this.container = this.createContainer();
-    this.headerText = this.createHeader();
-  }
+	constructor(
+		private renderer: CliRenderer,
+		private layout: LayoutDimensions,
+	) {
+		this.container = this.createContainer();
+		this.headerText = this.createHeader();
+	}
 
-  private createContainer(): BoxRenderable {
-    return new BoxRenderable(this.renderer, {
-      id: "content-window",
-      width: this.layout.centerWidth,
-      height: this.layout.contentWindowHeight,
-      backgroundColor: colors.bg,
-      borderStyle: "single",
-      borderColor: this.isFocused ? colors.accent : colors.border,
-      position: "absolute",
-      left: this.layout.centerX,
-      top: this.layout.contentWindowY,
-    });
-  }
+	private createContainer(): BoxRenderable {
+		return new BoxRenderable(this.renderer, {
+			id: "content-window",
+			width: this.layout.centerWidth,
+			height: this.layout.contentWindowHeight,
+			backgroundColor: colors.bg,
+			borderStyle: "single",
+			borderColor: this.isFocused ? colors.accent : colors.border,
+			position: "absolute",
+			left: this.layout.centerX,
+			top: this.layout.contentWindowY,
+		});
+	}
 
-  private createHeader(): TextRenderable {
-    return new TextRenderable(this.renderer, {
-      id: "content-header",
-      content: "",
-      fg: colors.textDim,
-      position: "absolute",
-      left: this.layout.centerX + 2,
-      top: this.layout.contentWindowY + 1,
-    });
-  }
+	private createHeader(): TextRenderable {
+		return new TextRenderable(this.renderer, {
+			id: "content-header",
+			content: "",
+			fg: colors.textDim,
+			position: "absolute",
+			left: this.layout.centerX + 2,
+			top: this.layout.contentWindowY + 1,
+		});
+	}
 
-  /**
-   * Set focus state (highlights border)
-   */
-  setFocused(focused: boolean): void {
-    this.isFocused = focused;
-    (this.container as any).borderColor = focused ? colors.accent : colors.border;
-  }
+	/**
+	 * Set focus state (highlights border)
+	 */
+	setFocused(focused: boolean): void {
+		this.isFocused = focused;
+		(this.container as any).borderColor = focused
+			? colors.accent
+			: colors.border;
+	}
 
-  /**
-   * Check if focused
-   */
-  hasFocus(): boolean {
-    return this.isFocused;
-  }
+	/**
+	 * Check if focused
+	 */
+	hasFocus(): boolean {
+		return this.isFocused;
+	}
 
-  /**
-   * Show loading state
-   */
-  setLoading(loading: boolean, message: string = "Loading..."): void {
-    this.isLoading = loading;
-    if (loading) {
-      this.statusMessage = message;
-      this.updateHeaderDisplay();
-      this.clearItemsDisplay();
-    }
-  }
+	/**
+	 * Show loading state
+	 */
+	setLoading(loading: boolean, message: string = "Loading..."): void {
+		this.isLoading = loading;
+		if (loading) {
+			this.statusMessage = message;
+			this.updateHeaderDisplay();
+			this.clearItemsDisplay();
+		}
+	}
 
-  /**
-   * Set a status message
-   */
-  setStatus(message: string): void {
-    this.statusMessage = message;
-    this.updateHeaderDisplay();
-  }
+	/**
+	 * Set a status message
+	 */
+	setStatus(message: string): void {
+		this.statusMessage = message;
+		this.updateHeaderDisplay();
+	}
 
-  /**
-   * Get current view type
-   */
-  getCurrentView(): ContentView {
-    return this.currentView;
-  }
+	/**
+	 * Get current view type
+	 */
+	getCurrentView(): ContentView {
+		return this.currentView;
+	}
 
-  /**
-   * Update with playlists
-   */
-  updatePlaylists(playlists: SpotifyPlaylist[]): void {
-    this.isLoading = false;
-    this.selectedIndex = 0;
-    this.scrollOffset = 0;
-    this.currentView = "playlists";
+	/**
+	 * Check if currently loading
+	 */
+	getIsLoading(): boolean {
+		return this.isLoading;
+	}
 
-    this.results = playlists.map(playlist => ({
-      id: playlist.id,
-      uri: playlist.uri,
-      title: playlist.name,
-      subtitle: `${playlist.tracks.total} tracks`,
-      type: "playlist" as const,
-    }));
+	/**
+	 * Update with playlists
+	 */
+	updatePlaylists(playlists: SpotifyPlaylist[]): void {
+		this.isLoading = false;
+		this.selectedIndex = 0;
+		this.scrollOffset = 0;
+		this.currentView = "playlists";
 
-    if (this.results.length === 0) {
-      this.statusMessage = "No playlists found";
-    } else {
-      this.statusMessage = `Your Playlists (${this.results.length})`;
-    }
+		this.results = playlists.map((playlist) => ({
+			id: playlist.id,
+			uri: playlist.uri,
+			title: playlist.name,
+			subtitle: `${playlist.tracks.total} tracks`,
+			type: "playlist" as const,
+		}));
 
-    this.updateHeaderDisplay();
-    this.rebuildItems();
-  }
+		if (this.results.length === 0) {
+			this.statusMessage = "No playlists found";
+		} else {
+			this.statusMessage = `Your Playlists (${this.results.length})`;
+		}
 
-  /**
-   * Update with tracks (search results or playlist tracks)
-   */
-  updateTracks(tracks: SpotifyTrack[], title: string = "Tracks"): void {
-    this.isLoading = false;
-    this.selectedIndex = 0;
-    this.scrollOffset = 0;
-    this.currentView = "tracks";
+		this.updateHeaderDisplay();
+		this.rebuildItems();
+	}
 
-    this.results = tracks.map(track => ({
-      id: track.id,
-      uri: track.uri,
-      title: track.name,
-      subtitle: track.artists.map(a => a.name).join(", "),
-      duration: this.formatDuration(track.duration_ms),
-      type: "track" as const,
-    })) as any;
+	/**
+	 * Update with tracks (search results or playlist tracks)
+	 */
+	updateTracks(tracks: SpotifyTrack[], title: string = "Tracks"): void {
+		this.isLoading = false;
+		this.selectedIndex = 0;
+		this.scrollOffset = 0;
+		this.currentView = "tracks";
 
-    if (this.results.length === 0) {
-      this.statusMessage = "No tracks found";
-    } else {
-      this.statusMessage = `${title} (${this.results.length})`;
-    }
+		this.results = tracks.map((track) => ({
+			id: track.id,
+			uri: track.uri,
+			title: track.name,
+			subtitle: track.artists.map((a) => a.name).join(", "),
+			duration: this.formatDuration(track.duration_ms),
+			type: "track" as const,
+		})) as any;
 
-    this.updateHeaderDisplay();
-    this.rebuildItems();
-  }
+		if (this.results.length === 0) {
+			this.statusMessage = "No tracks found";
+		} else {
+			this.statusMessage = `${title} (${this.results.length})`;
+		}
 
-  /**
-   * Update with search results
-   */
-  updateSearchResults(tracks: SpotifyTrack[]): void {
-    this.currentView = "search";
-    this.updateTracks(tracks, "Search Results");
-  }
+		this.updateHeaderDisplay();
+		this.rebuildItems();
+	}
 
-  /**
-   * Update with playlist tracks
-   */
-  updatePlaylistTracks(tracks: SpotifyTrack[], playlistName: string): void {
-    this.currentView = "playlist-tracks";
-    this.updateTracks(tracks, playlistName);
-  }
+	/**
+	 * Update with search results
+	 */
+	updateSearchResults(tracks: SpotifyTrack[]): void {
+		this.currentView = "search";
+		this.updateTracks(tracks, "Search Results");
+	}
 
-  /**
-   * Clear all results
-   */
-  clearResults(): void {
-    this.results = [];
-    this.selectedIndex = 0;
-    this.scrollOffset = 0;
-    this.statusMessage = "";
-    this.updateHeaderDisplay();
-    this.clearItemsDisplay();
-  }
+	/**
+	 * Update with playlist tracks
+	 */
+	updatePlaylistTracks(tracks: SpotifyTrack[], playlistName: string): void {
+		this.currentView = "playlist-tracks";
+		this.updateTracks(tracks, playlistName);
+	}
 
-  private formatDuration(ms: number): string {
-    const totalSeconds = Math.floor(ms / 1000);
-    const minutes = Math.floor(totalSeconds / 60);
-    const seconds = totalSeconds % 60;
-    return `${minutes}:${seconds.toString().padStart(2, "0")}`;
-  }
+	/**
+	 * Clear all results
+	 */
+	clearResults(): void {
+		this.results = [];
+		this.selectedIndex = 0;
+		this.scrollOffset = 0;
+		this.statusMessage = "";
+		this.updateHeaderDisplay();
+		this.clearItemsDisplay();
+	}
 
-  private updateHeaderDisplay(): void {
-    (this.headerText as any).content = this.statusMessage;
-  }
+	private formatDuration(ms: number): string {
+		const totalSeconds = Math.floor(ms / 1000);
+		const minutes = Math.floor(totalSeconds / 60);
+		const seconds = totalSeconds % 60;
+		return `${minutes}:${seconds.toString().padStart(2, "0")}`;
+	}
 
-  private clearItemsDisplay(): void {
-    this.items.forEach(item => {
-      (item as any).content = "";
-    });
-  }
+	private updateHeaderDisplay(): void {
+		(this.headerText as any).content = this.statusMessage;
+	}
 
-  private rebuildItems(): void {
-    const maxVisibleItems = this.layout.contentWindowHeight - 4;
+	private clearItemsDisplay(): void {
+		this.items.forEach((item) => {
+			(item as any).content = "";
+		});
+	}
 
-    // Ensure we have enough TextRenderable items for the visible area
-    while (this.items.length < maxVisibleItems) {
-      const item = new TextRenderable(this.renderer, {
-        id: `content-item-${this.items.length}`,
-        content: "",
-        fg: colors.textSecondary,
-        position: "absolute",
-        left: this.layout.centerX + 2,
-        top: this.layout.contentWindowY + 3 + this.items.length,
-      });
-      this.items.push(item);
-      this.renderer.root.add(item);
-    }
+	private rebuildItems(): void {
+		const maxVisibleItems = this.layout.contentWindowHeight - 4;
 
-    // Update item contents based on scroll offset
-    for (let i = 0; i < this.items.length; i++) {
-      // Hide items that are beyond the visible area (important for resize)
-      if (i >= maxVisibleItems) {
-        (this.items[i] as any).content = "";
-        continue;
-      }
+		// Ensure we have enough TextRenderable items for the visible area
+		while (this.items.length < maxVisibleItems) {
+			const item = new TextRenderable(this.renderer, {
+				id: `content-item-${this.items.length}`,
+				content: "",
+				fg: colors.textSecondary,
+				position: "absolute",
+				left: this.layout.centerX + 2,
+				top: this.layout.contentWindowY + 3 + this.items.length,
+			});
+			this.items.push(item);
+			this.renderer.root.add(item);
+		}
 
-      const resultIndex = this.scrollOffset + i;
-      
-      if (resultIndex < this.results.length) {
-        const result = this.results[resultIndex];
-        const isSelected = resultIndex === this.selectedIndex;
-        const prefix = isSelected ? "> " : "  ";
-        const maxWidth = this.layout.centerWidth - 6;
+		// Update item contents based on scroll offset
+		for (let i = 0; i < this.items.length; i++) {
+			// Hide items that are beyond the visible area (important for resize)
+			if (i >= maxVisibleItems) {
+				(this.items[i] as any).content = "";
+				continue;
+			}
 
-        // Format based on type
-        let content: string;
-        if (result.type === "playlist") {
-          content = `${prefix}${result.title} (${result.subtitle})`;
-          // Truncate if needed
-          if (content.length > maxWidth) {
-            content = content.substring(0, maxWidth - 3) + "...";
-          }
-        } else if (result.type === "track") {
-          // Track formatting with aligned duration column
-          const durationWidth = 6; // " 3:45 " format
-          const availableWidth = maxWidth - durationWidth;
-          const duration = (result as any).duration || "";
-          
-          // Split available width: ~60% for title, ~40% for artist
-          const titleWidth = Math.floor(availableWidth * 0.5);
-          const artistWidth = availableWidth - titleWidth - 3; // -3 for " - "
-          
-          // Truncate title and artist
-          let title = result.title;
-          if (title.length > titleWidth) {
-            title = title.substring(0, titleWidth - 1) + "…";
-          }
-          
-          let artist = result.subtitle;
-          if (artist.length > artistWidth) {
-            artist = artist.substring(0, artistWidth - 1) + "…";
-          }
-          
-          // Pad title to fixed width for alignment
-          title = title.padEnd(titleWidth, " ");
-          
-          // Build content with aligned duration
-          content = `${prefix}${title} - ${artist}`.padEnd(maxWidth - durationWidth, " ") + duration.padStart(durationWidth, " ");
-        } else {
-          content = `${prefix}${result.title} - ${result.subtitle}`;
-          // Truncate if needed
-          if (content.length > maxWidth) {
-            content = content.substring(0, maxWidth - 3) + "...";
-          }
-        }
+			const resultIndex = this.scrollOffset + i;
 
-        (this.items[i] as any).content = content;
-        (this.items[i] as any).fg = isSelected ? colors.textPrimary : colors.textSecondary;
-      } else {
-        (this.items[i] as any).content = "";
-      }
-    }
-  }
+			if (resultIndex < this.results.length) {
+				const result = this.results[resultIndex];
+				const isSelected = resultIndex === this.selectedIndex;
+				const prefix = isSelected ? "> " : "  ";
+				const maxWidth = this.layout.centerWidth - 6;
 
-  /**
-   * Move selection up
-   */
-  selectPrevious(): void {
-    if (this.results.length > 0) {
-      this.selectedIndex = Math.max(0, this.selectedIndex - 1);
-      
-      // Adjust scroll offset if selection moved above visible area
-      if (this.selectedIndex < this.scrollOffset) {
-        this.scrollOffset = this.selectedIndex;
-      }
-      
-      this.rebuildItems();
-    }
-  }
+				// Format based on type
+				let content: string;
+				if (result.type === "playlist") {
+					content = `${prefix}${result.title} (${result.subtitle})`;
+					// Truncate if needed
+					if (content.length > maxWidth) {
+						content = `${content.substring(0, maxWidth - 3)}...`;
+					}
+				} else if (result.type === "track") {
+					// Track formatting with aligned duration column
+					const durationWidth = 6; // " 3:45 " format
+					const availableWidth = maxWidth - durationWidth;
+					const duration = (result as any).duration || "";
 
-  /**
-   * Move selection down
-   */
-  selectNext(): void {
-    if (this.results.length > 0) {
-      this.selectedIndex = Math.min(this.results.length - 1, this.selectedIndex + 1);
-      
-      // Adjust scroll offset if selection moved below visible area
-      const maxVisibleItems = this.layout.contentWindowHeight - 4;
-      const maxVisibleIndex = this.scrollOffset + maxVisibleItems - 1;
-      
-      if (this.selectedIndex > maxVisibleIndex) {
-        this.scrollOffset = this.selectedIndex - maxVisibleItems + 1;
-      }
-      
-      this.rebuildItems();
-    }
-  }
+					// Split available width: ~60% for title, ~40% for artist
+					const titleWidth = Math.floor(availableWidth * 0.5);
+					const artistWidth = availableWidth - titleWidth - 3; // -3 for " - "
 
-  /**
-   * Get currently selected item
-   */
-  getSelectedItem(): ContentItem | null {
-    if (this.results.length === 0) return null;
-    return this.results[this.selectedIndex];
-  }
+					// Truncate title and artist
+					let title = result.title;
+					if (title.length > titleWidth) {
+						title = `${title.substring(0, titleWidth - 1)}…`;
+					}
 
-  /**
-   * Select current item (trigger appropriate action)
-   */
-  selectCurrent(): void {
-    const selected = this.getSelectedItem();
-    if (!selected) return;
+					let artist = result.subtitle;
+					if (artist.length > artistWidth) {
+						artist = `${artist.substring(0, artistWidth - 1)}…`;
+					}
 
-    if (selected.type === "playlist" && this.onPlaylistSelect) {
-      this.onPlaylistSelect(selected.id, selected.title);
-    } else if (selected.type === "track" && this.onTrackSelect) {
-      this.onTrackSelect(selected.uri);
-    }
-  }
+					// Pad title to fixed width for alignment
+					title = title.padEnd(titleWidth, " ");
 
-  /**
-   * Check if there are results to navigate
-   */
-  hasResults(): boolean {
-    return this.results.length > 0;
-  }
+					// Build content with aligned duration
+					content =
+						`${prefix}${title} - ${artist}`.padEnd(
+							maxWidth - durationWidth,
+							" ",
+						) + duration.padStart(durationWidth, " ");
+				} else {
+					content = `${prefix}${result.title} - ${result.subtitle}`;
+					// Truncate if needed
+					if (content.length > maxWidth) {
+						content = `${content.substring(0, maxWidth - 3)}...`;
+					}
+				}
 
-  /**
-   * Add all elements to renderer
-   */
-  render(): void {
-    this.renderer.root.add(this.container);
-    this.renderer.root.add(this.headerText);
-  }
+				(this.items[i] as any).content = content;
+				(this.items[i] as any).fg = isSelected
+					? colors.textPrimary
+					: colors.textSecondary;
+			} else {
+				(this.items[i] as any).content = "";
+			}
+		}
+	}
 
-  /**
-   * Update layout dimensions (for terminal resize)
-   */
-  updateLayout(layout: LayoutDimensions): void {
-    this.layout = layout;
+	/**
+	 * Move selection up
+	 */
+	selectPrevious(): void {
+		if (this.results.length > 0) {
+			this.selectedIndex = Math.max(0, this.selectedIndex - 1);
 
-    // Update container
-    (this.container as any).width = layout.centerWidth;
-    (this.container as any).height = layout.contentWindowHeight;
-    (this.container as any).left = layout.centerX;
-    (this.container as any).top = layout.contentWindowY;
+			// Adjust scroll offset if selection moved above visible area
+			if (this.selectedIndex < this.scrollOffset) {
+				this.scrollOffset = this.selectedIndex;
+			}
 
-    // Update header
-    (this.headerText as any).left = layout.centerX + 2;
-    (this.headerText as any).top = layout.contentWindowY + 1;
+			this.rebuildItems();
+		}
+	}
 
-    // Update existing items positions
-    this.items.forEach((item, index) => {
-      (item as any).left = layout.centerX + 2;
-      (item as any).top = layout.contentWindowY + 3 + index;
-    });
+	/**
+	 * Move selection down
+	 */
+	selectNext(): void {
+		if (this.results.length > 0) {
+			this.selectedIndex = Math.min(
+				this.results.length - 1,
+				this.selectedIndex + 1,
+			);
 
-    // Rebuild items to handle new visible area size
-    this.rebuildItems();
-  }
+			// Adjust scroll offset if selection moved below visible area
+			const maxVisibleItems = this.layout.contentWindowHeight - 4;
+			const maxVisibleIndex = this.scrollOffset + maxVisibleItems - 1;
 
-  /**
-   * Cleanup resources
-   */
-  destroy(): void {
-    // Remove from renderer if needed
-  }
+			if (this.selectedIndex > maxVisibleIndex) {
+				this.scrollOffset = this.selectedIndex - maxVisibleItems + 1;
+			}
+
+			this.rebuildItems();
+		}
+	}
+
+	/**
+	 * Get currently selected item
+	 */
+	getSelectedItem(): ContentItem | null {
+		if (this.results.length === 0) return null;
+		return this.results[this.selectedIndex];
+	}
+
+	/**
+	 * Select current item (trigger appropriate action)
+	 */
+	selectCurrent(): void {
+		const selected = this.getSelectedItem();
+		if (!selected) return;
+
+		if (selected.type === "playlist" && this.onPlaylistSelect) {
+			this.onPlaylistSelect(selected.id, selected.title);
+		} else if (selected.type === "track" && this.onTrackSelect) {
+			this.onTrackSelect(selected.uri);
+		}
+	}
+
+	/**
+	 * Check if there are results to navigate
+	 */
+	hasResults(): boolean {
+		return this.results.length > 0;
+	}
+
+	/**
+	 * Add all elements to renderer
+	 */
+	render(): void {
+		this.renderer.root.add(this.container);
+		this.renderer.root.add(this.headerText);
+	}
+
+	/**
+	 * Update layout dimensions (for terminal resize)
+	 */
+	updateLayout(layout: LayoutDimensions): void {
+		this.layout = layout;
+
+		// Update container
+		(this.container as any).width = layout.centerWidth;
+		(this.container as any).height = layout.contentWindowHeight;
+		(this.container as any).left = layout.centerX;
+		(this.container as any).top = layout.contentWindowY;
+
+		// Update header
+		(this.headerText as any).left = layout.centerX + 2;
+		(this.headerText as any).top = layout.contentWindowY + 1;
+
+		// Update existing items positions
+		this.items.forEach((item, index) => {
+			(item as any).left = layout.centerX + 2;
+			(item as any).top = layout.contentWindowY + 3 + index;
+		});
+
+		// Rebuild items to handle new visible area size
+		this.rebuildItems();
+	}
+
+	/**
+	 * Cleanup resources
+	 */
+	destroy(): void {
+		// Remove from renderer if needed
+	}
 }

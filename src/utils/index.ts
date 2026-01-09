@@ -1,1 +1,1 @@
-export { cleanupTerminal, getTerminalSize, calculateLayout } from "./terminal";
+export { calculateLayout, cleanupTerminal, getTerminalSize } from "./terminal";
