@@ -137,6 +137,9 @@ export class App {
 
 			// Load saved tracks (Songs) as default view
 			await this.loadSavedTracks();
+
+			// Auto-activate spotifyd as playback device (so user doesn't need Spotify open)
+			await this.activateSpotifydDevice();
 		} catch (error) {
 			console.error("Fatal error during startup:");
 			console.error(error);
@@ -436,6 +439,17 @@ export class App {
 					this.contentWindow.setStatus("Spotifyd stopped");
 				},
 			},
+			{
+				id: "spotifyd-activate",
+				label: "Activate as Playback Device",
+				category: "Spotifyd",
+				action: async () => {
+					this.contentWindow.setStatus("Activating spotifyd...");
+					const result = await this.spotifyApi.activateSpotifyd(false);
+					this.contentWindow.setStatus(result.message);
+					this.updateConnectionStatus();
+				},
+			},
 
 			// Playback section
 			{
@@ -573,6 +587,33 @@ export class App {
 				await this.spotifydManager.start();
 			}
 		}
+	}
+
+	/**
+	 * Activate spotifyd as the Spotify Connect playback device
+	 * This allows playback without needing the Spotify app open
+	 * Retries a few times since spotifyd needs time to register with Spotify
+	 */
+	private async activateSpotifydDevice(): Promise<void> {
+		const maxRetries = 5;
+		const retryDelayMs = 2000; // 2 seconds between retries
+
+		for (let attempt = 1; attempt <= maxRetries; attempt++) {
+			const result = await this.spotifyApi.activateSpotifyd(false);
+
+			if (result.success) {
+				this.updateConnectionStatus();
+				return;
+			}
+
+			// If device not found and we have retries left, wait and try again
+			if (attempt < maxRetries) {
+				await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
+			}
+		}
+
+		// All retries exhausted - silently fail, user can manually activate via Ctrl+P
+		this.updateConnectionStatus();
 	}
 
 	/**

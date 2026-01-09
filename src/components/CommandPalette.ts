@@ -13,16 +13,22 @@ export interface Command {
 	action: () => void | Promise<void>;
 }
 
+// Category label color (muted purple/lavender like in Claude Code)
+const CATEGORY_COLOR = "#a78bfa"; // violet-400
+
+// Overlay color for dimming background
+const OVERLAY_COLOR = "#000000";
+
 /**
  * CommandPalette component - modal popup for commands (Ctrl+P)
- * Similar to VS Code / OpenCode command palette
+ * Responsive design that adapts to terminal size
  */
 export class CommandPalette {
+	private overlay: BoxRenderable;
 	private container: BoxRenderable;
 	private titleBar: TextRenderable;
 	private searchInput: TextRenderable;
 	private commandItems: TextRenderable[] = [];
-	private categoryLabels: TextRenderable[] = [];
 
 	private commands: Command[] = [];
 	private filteredCommands: Command[] = [];
@@ -34,33 +40,73 @@ export class CommandPalette {
 	public onClose: (() => void) | null = null;
 	public onCommandExecuted: ((commandId: string) => void) | null = null;
 
-	// Dimensions
-	private readonly PALETTE_WIDTH = 60;
-	private readonly PALETTE_HEIGHT = 20;
-	private readonly MAX_VISIBLE_COMMANDS = 15;
+	// Responsive dimensions (calculated from terminal size)
+	private paletteWidth: number = 60;
+	private paletteHeight: number = 20;
+	private maxVisibleItems: number = 15;
 
 	constructor(
 		private renderer: CliRenderer,
 		private layout: LayoutDimensions,
 	) {
+		this.calculateDimensions();
+		this.overlay = this.createOverlay();
 		this.container = this.createContainer();
 		this.titleBar = this.createTitleBar();
 		this.searchInput = this.createSearchInput();
 		this.commandItems = this.createCommandItems();
-		this.categoryLabels = this.createCategoryLabels();
+	}
+
+	/**
+	 * Calculate responsive dimensions based on terminal size
+	 */
+	private calculateDimensions(): void {
+		// Width: 50% of terminal width, min 50, max 80
+		this.paletteWidth = Math.min(
+			80,
+			Math.max(50, Math.floor(this.layout.termWidth * 0.5)),
+		);
+
+		// Height: 60% of terminal height, min 15, max 25
+		this.paletteHeight = Math.min(
+			25,
+			Math.max(15, Math.floor(this.layout.termHeight * 0.6)),
+		);
+
+		// Max visible items: height - 5 (for border, title, search, padding)
+		this.maxVisibleItems = this.paletteHeight - 5;
+	}
+
+	private getPosition(): { left: number; top: number } {
+		return {
+			left: Math.floor((this.layout.termWidth - this.paletteWidth) / 2),
+			top: Math.floor((this.layout.termHeight - this.paletteHeight) / 2),
+		};
+	}
+
+	private createOverlay(): BoxRenderable {
+		// Full-screen semi-transparent overlay to dim background
+		return new BoxRenderable(this.renderer, {
+			id: "command-palette-overlay",
+			width: this.layout.termWidth,
+			height: this.layout.termHeight,
+			backgroundColor: OVERLAY_COLOR,
+			position: "absolute",
+			left: 0,
+			top: 0,
+		});
 	}
 
 	private createContainer(): BoxRenderable {
-		const left = Math.floor((this.layout.termWidth - this.PALETTE_WIDTH) / 2);
-		const top = Math.floor((this.layout.termHeight - this.PALETTE_HEIGHT) / 2);
+		const { left, top } = this.getPosition();
 
 		return new BoxRenderable(this.renderer, {
 			id: "command-palette",
-			width: this.PALETTE_WIDTH,
-			height: this.PALETTE_HEIGHT,
+			width: this.paletteWidth,
+			height: this.paletteHeight,
 			backgroundColor: colors.bgSecondary,
 			borderStyle: "single",
-			borderColor: colors.accent,
+			borderColor: colors.border,
 			position: "absolute",
 			left,
 			top,
@@ -68,12 +114,18 @@ export class CommandPalette {
 	}
 
 	private createTitleBar(): TextRenderable {
-		const left = Math.floor((this.layout.termWidth - this.PALETTE_WIDTH) / 2);
-		const top = Math.floor((this.layout.termHeight - this.PALETTE_HEIGHT) / 2);
+		const { left, top } = this.getPosition();
+		const innerWidth = this.paletteWidth - 2;
+
+		// "Commands" on left, "esc" on right
+		const title = "Commands";
+		const escHint = "esc";
+		const padding = innerWidth - title.length - escHint.length;
+		const content = title + " ".repeat(Math.max(1, padding)) + escHint;
 
 		return new TextRenderable(this.renderer, {
 			id: "palette-title",
-			content: " Commands                                      esc ",
+			content,
 			fg: colors.textDim,
 			bg: colors.bgSecondary,
 			position: "absolute",
@@ -83,12 +135,11 @@ export class CommandPalette {
 	}
 
 	private createSearchInput(): TextRenderable {
-		const left = Math.floor((this.layout.termWidth - this.PALETTE_WIDTH) / 2);
-		const top = Math.floor((this.layout.termHeight - this.PALETTE_HEIGHT) / 2);
+		const { left, top } = this.getPosition();
 
 		return new TextRenderable(this.renderer, {
 			id: "palette-search",
-			content: "> Search...",
+			content: "Search",
 			fg: colors.textDim,
 			bg: colors.bgSecondary,
 			position: "absolute",
@@ -98,11 +149,10 @@ export class CommandPalette {
 	}
 
 	private createCommandItems(): TextRenderable[] {
-		const left = Math.floor((this.layout.termWidth - this.PALETTE_WIDTH) / 2);
-		const top = Math.floor((this.layout.termHeight - this.PALETTE_HEIGHT) / 2);
+		const { left, top } = this.getPosition();
 		const items: TextRenderable[] = [];
 
-		for (let i = 0; i < this.MAX_VISIBLE_COMMANDS; i++) {
+		for (let i = 0; i < this.maxVisibleItems; i++) {
 			items.push(
 				new TextRenderable(this.renderer, {
 					id: `palette-item-${i}`,
@@ -110,18 +160,13 @@ export class CommandPalette {
 					fg: colors.textSecondary,
 					bg: colors.bgSecondary,
 					position: "absolute",
-					left: left + 2,
+					left: left + 1,
 					top: top + 5 + i,
 				}),
 			);
 		}
 
 		return items;
-	}
-
-	private createCategoryLabels(): TextRenderable[] {
-		// Category labels are rendered inline with commands
-		return [];
 	}
 
 	/**
@@ -141,6 +186,7 @@ export class CommandPalette {
 		this.searchText = "";
 		this.selectedIndex = 0;
 		this.filteredCommands = [...this.commands];
+		this.calculateDimensions();
 		this.updateDisplay();
 		this.render();
 	}
@@ -257,10 +303,10 @@ export class CommandPalette {
 	 * Update the display
 	 */
 	private updateDisplay(): void {
+		const innerWidth = this.paletteWidth - 2;
+
 		// Update search input
-		const searchContent = this.searchText
-			? `> ${this.searchText}`
-			: "> Search...";
+		const searchContent = this.searchText ? this.searchText : "Search";
 		(this.searchInput as any).content = searchContent;
 		(this.searchInput as any).fg = this.searchText
 			? colors.textPrimary
@@ -268,7 +314,6 @@ export class CommandPalette {
 
 		// Group commands by category
 		const grouped = new Map<string, Command[]>();
-		let lastCategory = "";
 
 		for (const cmd of this.filteredCommands) {
 			const category = cmd.category || "Commands";
@@ -279,7 +324,12 @@ export class CommandPalette {
 		}
 
 		// Flatten with category headers for display
-		const displayItems: Array<{ type: "category" | "command"; content: string; command?: Command; isSelected?: boolean }> = [];
+		const displayItems: Array<{
+			type: "category" | "command";
+			content: string;
+			command?: Command;
+			isSelected?: boolean;
+		}> = [];
 		let currentIndex = 0;
 
 		for (const [category, cmds] of grouped) {
@@ -299,40 +349,42 @@ export class CommandPalette {
 		}
 
 		// Update display items
-		const maxWidth = this.PALETTE_WIDTH - 4;
 		for (let i = 0; i < this.commandItems.length; i++) {
 			if (i < displayItems.length) {
 				const item = displayItems[i];
 				if (item.type === "category") {
-					// Category header styling
+					// Category header styling (muted purple like in the image)
 					(this.commandItems[i] as any).content = item.content;
-					(this.commandItems[i] as any).fg = colors.accent;
+					(this.commandItems[i] as any).fg = CATEGORY_COLOR;
 					(this.commandItems[i] as any).bg = colors.bgSecondary;
 				} else {
 					// Command item styling
-					const prefix = item.isSelected ? "> " : "  ";
-					const shortcut = item.command?.shortcut ? `  ${item.command.shortcut}` : "";
-					let content = `${prefix}${item.content}`;
-					
-					// Pad and add shortcut on right
-					const availableWidth = maxWidth - shortcut.length;
-					if (content.length > availableWidth) {
-						content = `${content.substring(0, availableWidth - 1)}…`;
-					} else {
-						content = content.padEnd(availableWidth);
+					const shortcut = item.command?.shortcut
+						? `${item.command.shortcut}`
+						: "";
+					let label = item.content;
+
+					// Calculate available space for label
+					const availableWidth = innerWidth - shortcut.length - 2;
+					if (label.length > availableWidth) {
+						label = `${label.substring(0, availableWidth - 1)}…`;
 					}
-					content += shortcut;
+
+					// Build content: label + padding + shortcut
+					const padding = innerWidth - label.length - shortcut.length;
+					const content = label + " ".repeat(Math.max(1, padding)) + shortcut;
 
 					(this.commandItems[i] as any).content = content;
 					(this.commandItems[i] as any).fg = item.isSelected
 						? colors.textPrimary
 						: colors.textSecondary;
 					(this.commandItems[i] as any).bg = item.isSelected
-						? colors.accent
+						? colors.highlight
 						: colors.bgSecondary;
 				}
 			} else {
 				(this.commandItems[i] as any).content = "";
+				(this.commandItems[i] as any).bg = colors.bgSecondary;
 			}
 		}
 	}
@@ -343,6 +395,9 @@ export class CommandPalette {
 	render(): void {
 		if (!this.isVisible) return;
 
+		// Add overlay first (dims background)
+		this.renderer.root.add(this.overlay);
+		// Then add the palette on top
 		this.renderer.root.add(this.container);
 		this.renderer.root.add(this.titleBar);
 		this.renderer.root.add(this.searchInput);
@@ -356,10 +411,11 @@ export class CommandPalette {
 	 */
 	destroy(): void {
 		try {
+			this.renderer.root.remove("command-palette-overlay");
 			this.renderer.root.remove("command-palette");
 			this.renderer.root.remove("palette-title");
 			this.renderer.root.remove("palette-search");
-			for (let i = 0; i < this.commandItems.length; i++) {
+			for (let i = 0; i < this.maxVisibleItems; i++) {
 				this.renderer.root.remove(`palette-item-${i}`);
 			}
 		} catch {
@@ -372,22 +428,42 @@ export class CommandPalette {
 	 */
 	updateLayout(layout: LayoutDimensions): void {
 		this.layout = layout;
+		this.calculateDimensions();
 
-		const left = Math.floor((layout.termWidth - this.PALETTE_WIDTH) / 2);
-		const top = Math.floor((layout.termHeight - this.PALETTE_HEIGHT) / 2);
+		const { left, top } = this.getPosition();
+		const innerWidth = this.paletteWidth - 2;
 
+		// Update overlay to cover full screen
+		(this.overlay as any).width = layout.termWidth;
+		(this.overlay as any).height = layout.termHeight;
+
+		// Update container
+		(this.container as any).width = this.paletteWidth;
+		(this.container as any).height = this.paletteHeight;
 		(this.container as any).left = left;
 		(this.container as any).top = top;
 
+		// Update title bar
+		const title = "Commands";
+		const escHint = "esc";
+		const padding = innerWidth - title.length - escHint.length;
+		(this.titleBar as any).content =
+			title + " ".repeat(Math.max(1, padding)) + escHint;
 		(this.titleBar as any).left = left + 1;
 		(this.titleBar as any).top = top + 1;
 
+		// Update search input
 		(this.searchInput as any).left = left + 2;
 		(this.searchInput as any).top = top + 3;
 
+		// Update command items positions
 		for (let i = 0; i < this.commandItems.length; i++) {
-			(this.commandItems[i] as any).left = left + 2;
+			(this.commandItems[i] as any).left = left + 1;
 			(this.commandItems[i] as any).top = top + 5 + i;
+		}
+
+		if (this.isVisible) {
+			this.updateDisplay();
 		}
 	}
 }

@@ -311,6 +311,81 @@ export class SpotifyApiService {
 		});
 	}
 
+	/**
+	 * Find spotifyd device from available devices
+	 * Looks for common spotifyd device names
+	 */
+	async findSpotifydDevice(): Promise<{
+		id: string;
+		name: string;
+		is_active: boolean;
+	} | null> {
+		try {
+			const { devices } = await this.getDevices();
+
+			// Common names for spotifyd devices
+			const spotifydNames = ["spotify-tui", "spotifyd"];
+
+			// First, look for device with known spotifyd names (case-insensitive)
+			let spotifyd = devices.find((d) =>
+				spotifydNames.some((name) => d.name.toLowerCase().includes(name)),
+			);
+
+			// If not found, could be custom name - look for Computer type
+			// (spotifyd default device_type is "computer")
+			if (!spotifyd) {
+				spotifyd = devices.find((d) => d.type === "Computer" && !d.is_active);
+			}
+
+			return spotifyd || null;
+		} catch {
+			return null;
+		}
+	}
+
+	/**
+	 * Activate spotifyd as the playback device
+	 * Returns true if successful, false otherwise
+	 */
+	async activateSpotifyd(startPlayback: boolean = false): Promise<{
+		success: boolean;
+		message: string;
+		deviceName?: string;
+	}> {
+		try {
+			const device = await this.findSpotifydDevice();
+
+			if (!device) {
+				return {
+					success: false,
+					message: "spotifyd device not found. Make sure spotifyd is running.",
+				};
+			}
+
+			if (device.is_active) {
+				return {
+					success: true,
+					message: `${device.name} is already active`,
+					deviceName: device.name,
+				};
+			}
+
+			await this.transferPlayback(device.id, startPlayback);
+
+			return {
+				success: true,
+				message: `Activated ${device.name}`,
+				deviceName: device.name,
+			};
+		} catch (error) {
+			return {
+				success: false,
+				message:
+					error instanceof Error ? error.message : "Failed to activate device",
+			};
+		}
+	}
+
 	// ─────────────────────────────────────────────────────────────
 	// Library
 	// ─────────────────────────────────────────────────────────────

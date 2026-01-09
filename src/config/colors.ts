@@ -1,21 +1,21 @@
 import type { ColorScheme } from "../types";
 
 /**
- * Zinc/Gray color scheme
- * Based on Tailwind CSS zinc color palette
+ * Dark color scheme
+ * Matched to Claude Code's terminal UI
  */
 export const colors: ColorScheme = {
-	bg: "#18181b", // zinc-900
-	bgSecondary: "#27272a", // zinc-800
-	border: "#3f3f46", // zinc-700
-	textPrimary: "#fafafa", // zinc-50
-	textSecondary: "#a1a1aa", // zinc-400
-	textDim: "#71717a", // zinc-500
-	accent: "#52525b", // zinc-600
-	highlight: "#d4d4d8", // zinc-300
-	success: "#22c55e", // green-500
-	warning: "#f59e0b", // amber-500
-	error: "#ef4444", // red-500
+	bg: "#0d1117", // Very dark background (like GitHub dark)
+	bgSecondary: "#161b22", // Slightly lighter for panels/modals
+	border: "#30363d", // Subtle borders
+	textPrimary: "#c9d1d9", // Light gray text
+	textSecondary: "#8b949e", // Muted text
+	textDim: "#484f58", // Very muted text
+	accent: "#21262d", // Selection highlight
+	highlight: "#30363d", // Hover/focus highlight
+	success: "#3fb950", // green
+	warning: "#d29922", // amber
+	error: "#f85149", // red
 };
 
 /**
