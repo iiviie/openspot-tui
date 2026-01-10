@@ -4,6 +4,7 @@
  */
 
 import dbus from "dbus-next";
+import { getAppEventBus } from "../events";
 import { getLogger } from "../utils";
 import type {
 	LoopStatus,
@@ -14,6 +15,7 @@ import type {
 } from "../types/mpris";
 
 const logger = getLogger("MprisService");
+const eventBus = getAppEventBus();
 
 const MPRIS_PREFIX = "org.mpris.MediaPlayer2";
 const MPRIS_PATH = "/org/mpris/MediaPlayer2";
@@ -27,8 +29,10 @@ export class MprisService {
 	private bus: dbus.MessageBus | null = null;
 	private playerInterface: dbus.ClientInterface | null = null;
 	private propertiesInterface: dbus.ClientInterface | null = null;
+	private proxyObject: dbus.ProxyObject | null = null;
 	private serviceName: string | null = null;
 	private connected: boolean = false;
+	private signalsSetup: boolean = false;
 
 	/**
 	 * Connect to the spotifyd MPRIS interface
@@ -46,14 +50,17 @@ export class MprisService {
 			}
 
 			// Get the proxy object
-			const proxyObject = await this.bus.getProxyObject(
+			this.proxyObject = await this.bus.getProxyObject(
 				this.serviceName,
 				MPRIS_PATH,
 			);
 
 			// Get interfaces
-			this.playerInterface = proxyObject.getInterface(PLAYER_INTERFACE);
-			this.propertiesInterface = proxyObject.getInterface(PROPERTIES_INTERFACE);
+			this.playerInterface = this.proxyObject.getInterface(PLAYER_INTERFACE);
+			this.propertiesInterface = this.proxyObject.getInterface(PROPERTIES_INTERFACE);
+
+			// Set up signal listeners for property changes
+			this.setupSignals();
 
 			this.connected = true;
 			return true;
@@ -148,8 +155,122 @@ export class MprisService {
 		}
 		this.playerInterface = null;
 		this.propertiesInterface = null;
+		this.proxyObject = null;
 		this.serviceName = null;
 		this.connected = false;
+		this.signalsSetup = false;
+	}
+
+	/**
+	 * Set up D-Bus signal listeners for property changes
+	 * This replaces polling with event-driven updates
+	 */
+	private setupSignals(): void {
+		if (!this.propertiesInterface || this.signalsSetup) {
+			return;
+		}
+
+		try {
+			// Listen to PropertiesChanged signal
+			this.propertiesInterface.on("PropertiesChanged", (
+				interfaceName: string,
+				changedProperties: Record<string, dbus.Variant>,
+				invalidatedProperties: string[],
+			) => {
+				if (interfaceName !== PLAYER_INTERFACE) {
+					return;
+				}
+
+				// Handle property changes
+				this.handlePropertyChanges(changedProperties);
+			});
+
+			this.signalsSetup = true;
+			logger.debug("D-Bus signal listeners set up successfully");
+		} catch (error) {
+			logger.error("Failed to set up D-Bus signals", error);
+		}
+	}
+
+	/**
+	 * Handle MPRIS property changes from signals
+	 */
+	private async handlePropertyChanges(
+		changedProperties: Record<string, dbus.Variant>,
+	): Promise<void> {
+		try {
+			// Track changed metadata
+			if (changedProperties.Metadata) {
+				const metadata = this.parseMetadata(
+					changedProperties.Metadata.value as Record<string, dbus.Variant>,
+				);
+
+				// Emit track changed event
+				eventBus.emitSync("playback:trackChanged", {
+					title: metadata.title,
+					artist: metadata.artist.join(", "),
+					album: metadata.album,
+					artUrl: metadata.artUrl,
+					uri: metadata.url,
+					duration: Math.floor(metadata.length / 1000),
+				});
+			}
+
+			// Build playback state update
+			const stateUpdate: Partial<{
+				isPlaying: boolean;
+				position: number;
+				volume: number;
+				shuffle: boolean;
+				loopStatus: LoopStatus;
+			}> = {};
+
+			if (changedProperties.PlaybackStatus) {
+				const status = changedProperties.PlaybackStatus.value as PlaybackStatus;
+				stateUpdate.isPlaying = status === "Playing";
+			}
+
+			if (changedProperties.Position) {
+				stateUpdate.position = Math.floor(
+					Number(changedProperties.Position.value) / 1000,
+				);
+			}
+
+			if (changedProperties.Volume) {
+				stateUpdate.volume = changedProperties.Volume.value as number;
+			}
+
+			if (changedProperties.Shuffle) {
+				stateUpdate.shuffle = changedProperties.Shuffle.value as boolean;
+			}
+
+			if (changedProperties.LoopStatus) {
+				stateUpdate.loopStatus = changedProperties.LoopStatus
+					.value as LoopStatus;
+			}
+
+			// Emit playback state changed if we have any updates
+			if (Object.keys(stateUpdate).length > 0) {
+				// Get current full state to fill in missing properties
+				const fullState = await this.getPlayerState();
+				if (fullState) {
+					eventBus.emitSync("playback:stateChanged", {
+						isPlaying:
+							stateUpdate.isPlaying ??
+							(fullState.playbackStatus === "Playing"),
+						position: stateUpdate.position ?? Math.floor(fullState.position / 1000),
+						duration: fullState.metadata?.length
+							? Math.floor(fullState.metadata.length / 1000)
+							: 0,
+						volume: stateUpdate.volume ?? fullState.volume,
+						shuffle: stateUpdate.shuffle ?? fullState.shuffle,
+						loopStatus: stateUpdate.loopStatus ?? fullState.loopStatus,
+					});
+				}
+			}
+		} catch (error) {
+			logger.error("Error handling property changes", error);
+		}
 	}
 
 	// ─────────────────────────────────────────────────────────────

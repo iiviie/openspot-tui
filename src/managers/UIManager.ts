@@ -1,0 +1,268 @@
+/**
+ * UI Manager
+ * Manages UI components and rendering
+ */
+
+import {
+	CommandPalette,
+	ContentWindow,
+	NowPlaying,
+	SearchBar,
+	Sidebar,
+	StatusBar,
+	StatusSidebar,
+	type ConnectionStatus,
+} from "../components";
+import { getAppEventBus } from "../events";
+import type { CliRenderer, LayoutDimensions, MenuItem } from "../types";
+import type { SpotifyTrack } from "../types/spotify";
+import type { StateManager } from "./StateManager";
+
+/**
+ * Manages all UI components
+ */
+export class UIManager {
+	// UI Components
+	private sidebar!: Sidebar;
+	private contentWindow!: ContentWindow;
+	private nowPlaying!: NowPlaying;
+	private statusBar!: StatusBar;
+	private statusSidebar!: StatusSidebar;
+	private searchBar!: SearchBar;
+	private commandPalette!: CommandPalette;
+
+	private eventBus = getAppEventBus();
+
+	constructor(
+		private renderer: CliRenderer,
+		private layout: LayoutDimensions,
+		private stateManager: StateManager,
+	) {
+		this.initializeComponents();
+		this.setupEventListeners();
+	}
+
+	/**
+	 * Initialize all UI components
+	 */
+	private initializeComponents(): void {
+		this.sidebar = new Sidebar(this.renderer, this.layout);
+		this.contentWindow = new ContentWindow(this.renderer, this.layout);
+		this.nowPlaying = new NowPlaying(this.renderer, this.layout);
+		this.statusBar = new StatusBar(this.renderer, this.layout);
+		this.statusSidebar = new StatusSidebar(this.renderer, this.layout);
+		this.searchBar = new SearchBar(this.renderer, this.layout);
+		this.commandPalette = new CommandPalette(this.renderer, this.layout);
+	}
+
+	/**
+	 * Set up event listeners for UI updates
+	 */
+	private setupEventListeners(): void {
+		// Listen to state changes and update UI
+		this.eventBus.on("playback:stateChanged", () => {
+			this.updatePlaybackUI();
+		});
+
+		this.eventBus.on("playback:trackChanged", () => {
+			this.updateTrackUI();
+		});
+
+		this.eventBus.on("queue:updated", () => {
+			this.updateQueueUI();
+		});
+
+		this.eventBus.on("trackList:updated", () => {
+			this.updateTrackListUI();
+		});
+
+		this.eventBus.on("ui:focusChanged", () => {
+			this.updateFocusUI();
+		});
+
+		this.eventBus.on("connection:statusChanged", () => {
+			this.updateConnectionStatusUI();
+		});
+	}
+
+	// ─────────────────────────────────────────────────────────────
+	// Component Getters
+	// ─────────────────────────────────────────────────────────────
+
+	getSidebar(): Sidebar {
+		return this.sidebar;
+	}
+
+	getContentWindow(): ContentWindow {
+		return this.contentWindow;
+	}
+
+	getNowPlaying(): NowPlaying {
+		return this.nowPlaying;
+	}
+
+	getStatusBar(): StatusBar {
+		return this.statusBar;
+	}
+
+	getStatusSidebar(): StatusSidebar {
+		return this.statusSidebar;
+	}
+
+	getSearchBar(): SearchBar {
+		return this.searchBar;
+	}
+
+	getCommandPalette(): CommandPalette {
+		return this.commandPalette;
+	}
+
+	// ─────────────────────────────────────────────────────────────
+	// UI Update Methods
+	// ─────────────────────────────────────────────────────────────
+
+	/**
+	 * Update playback UI (now playing, status bar)
+	 */
+	private updatePlaybackUI(): void {
+		const state = this.stateManager.getState();
+
+		this.nowPlaying.update({
+			isPlaying: state.isPlaying,
+			position: state.position,
+			duration: state.duration,
+			volume: state.volume,
+			shuffle: state.shuffle,
+			repeat: state.repeat,
+		});
+
+		this.statusBar.update({
+			isPlaying: state.isPlaying,
+			shuffle: state.shuffle,
+			repeat: state.repeat,
+		});
+	}
+
+	/**
+	 * Update track UI (now playing)
+	 */
+	private updateTrackUI(): void {
+		const track = this.stateManager.getCurrentTrack();
+
+		if (track) {
+			this.nowPlaying.update({
+				title: track.title,
+				artist: track.artist,
+				album: track.album,
+				artUrl: track.artUrl,
+			});
+		}
+	}
+
+	/**
+	 * Update queue UI
+	 */
+	private updateQueueUI(): void {
+		const queue = this.stateManager.getQueue();
+		this.contentWindow.updateQueue(queue);
+	}
+
+	/**
+	 * Update track list UI
+	 */
+	private updateTrackListUI(): void {
+		const tracks = this.stateManager.getTracks();
+		const selectedIndex = this.stateManager.getSelectedTrackIndex();
+		this.contentWindow.updateTracks(tracks, selectedIndex);
+	}
+
+	/**
+	 * Update focus UI (highlight focused panel)
+	 */
+	private updateFocusUI(): void {
+		const focus = this.stateManager.getFocus();
+
+		this.sidebar.setFocused(focus === "sidebar");
+		this.contentWindow.setFocused(focus === "content" || focus === "queue");
+	}
+
+	/**
+	 * Update connection status UI
+	 */
+	private updateConnectionStatusUI(): void {
+		// This will be called when connection status changes
+		// For now, we'll keep the existing connection status logic
+	}
+
+	/**
+	 * Set sidebar items
+	 */
+	setSidebarItems(items: MenuItem[]): void {
+		const selectedIndex = this.stateManager.getSelectedSidebarIndex();
+		this.sidebar.updateItems(items, selectedIndex);
+		this.stateManager.setSidebarItems(items);
+	}
+
+	/**
+	 * Update sidebar selection
+	 */
+	updateSidebarSelection(index: number): void {
+		const items = this.stateManager.getSidebarItems();
+		this.sidebar.updateItems(items, index);
+		this.stateManager.setSelectedSidebarIndex(index);
+	}
+
+	/**
+	 * Set connection status
+	 */
+	setConnectionStatus(status: ConnectionStatus): void {
+		this.statusSidebar.updateConnectionStatus(status);
+	}
+
+	/**
+	 * Render all components
+	 */
+	render(): void {
+		this.sidebar.render();
+		this.contentWindow.render();
+		this.nowPlaying.render();
+		this.statusBar.render();
+		this.statusSidebar.render();
+		this.searchBar.render();
+
+		// Command palette is rendered separately when shown
+	}
+
+	/**
+	 * Update layout when terminal is resized
+	 */
+	updateLayout(layout: LayoutDimensions): void {
+		this.layout = layout;
+
+		this.sidebar.updateLayout(layout);
+		this.contentWindow.updateLayout(layout);
+		this.nowPlaying.updateLayout(layout);
+		this.statusBar.updateLayout(layout);
+		this.statusSidebar.updateLayout(layout);
+		this.searchBar.updateLayout(layout);
+		this.commandPalette.updateLayout(layout);
+
+		this.eventBus.emitSync("ui:terminalResized", {
+			width: layout.termWidth,
+			height: layout.termHeight,
+		});
+	}
+
+	/**
+	 * Destroy all components
+	 */
+	destroy(): void {
+		this.sidebar.destroy();
+		this.contentWindow.destroy();
+		this.nowPlaying.destroy();
+		this.statusBar.destroy();
+		this.statusSidebar.destroy();
+		this.searchBar.destroy();
+		this.commandPalette.destroy();
+	}
+}
