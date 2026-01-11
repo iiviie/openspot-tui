@@ -21,7 +21,6 @@ import {
 	getMprisService,
 	getSpotifyApiService,
 	getSpotifydManager,
-	type MprisService,
 	type SpotifyApiService,
 	type SpotifydManager,
 } from "./services";
@@ -33,7 +32,7 @@ import type {
 	LayoutDimensions,
 	MenuItem,
 } from "./types";
-import type { NowPlayingInfo } from "./types/mpris";
+import type { IMprisService, NowPlayingInfo } from "./types/mpris";
 import type { SpotifyTrack } from "./types/spotify";
 import { calculateLayout, cleanupTerminal, getLogger } from "./utils";
 
@@ -70,7 +69,7 @@ type FocusPanel = "library" | "content";
 export class App {
 	private renderer!: CliRenderer;
 	private layout!: LayoutDimensions;
-	private mpris!: MprisService;
+	private mpris!: IMprisService;
 	private spotifyApi!: SpotifyApiService;
 	private spotifydManager!: SpotifydManager;
 	private updateInterval: Timer | null = null;
@@ -184,15 +183,22 @@ export class App {
 
 	/**
 	 * Initialize MPRIS connection to spotifyd
+	 * Connection happens in background to avoid blocking TUI startup
 	 */
 	private async initializeMpris(): Promise<void> {
 		this.mpris = getMprisService();
-		const connected = await this.mpris.connect();
 
-		if (!connected) {
-			logger.warn("Could not connect to spotifyd. Make sure it's running.");
-			logger.always("Run: spotifyd --no-daemon");
-		}
+		// Connect in background without blocking TUI startup
+		this.mpris.connect().then((connected) => {
+			if (!connected) {
+				logger.warn("Could not connect to spotifyd. Make sure it's running.");
+				logger.always("Run: spotifyd --no-daemon");
+			} else {
+				logger.info("MPRIS connection established");
+			}
+		}).catch((error) => {
+			logger.error("MPRIS connection error:", error);
+		});
 	}
 
 	/**
@@ -565,7 +571,9 @@ export class App {
 			await new Promise((resolve) => setTimeout(resolve, 500));
 		}
 
-		this.contentWindow.setStatus("Starting authentication - browser will open...");
+		this.contentWindow.setStatus(
+			"Starting authentication - browser will open...",
+		);
 
 		const result = await this.spotifydManager.authenticate((status, _url) => {
 			// Update status in real-time as authentication progresses
@@ -584,7 +592,9 @@ export class App {
 				await this.mpris.connect();
 				this.contentWindow.setStatus("Authentication complete!");
 			} else {
-				this.contentWindow.setStatus(`Auth OK but restart failed: ${startResult.message}`);
+				this.contentWindow.setStatus(
+					`Auth OK but restart failed: ${startResult.message}`,
+				);
 			}
 		} else {
 			this.contentWindow.setStatus(`Auth failed: ${result.message}`);
@@ -628,14 +638,25 @@ export class App {
 	private updateConnectionStatus(): void {
 		const spotifydStatus = this.spotifydManager.getStatus();
 
+		// Determine which backend is being used
+		const useNative = process.env.SPOTIFY_TUI_USE_NATIVE !== "0";
+
 		const connectionStatus: ConnectionStatus = {
 			spotifydInstalled: spotifydStatus.installed,
 			spotifydRunning: spotifydStatus.running,
 			spotifydAuthenticated: spotifydStatus.authenticated,
 			mprisConnected: this.mpris?.isConnected() ?? false,
+			mprisBackend: useNative ? "native" : "typescript",
 		};
 
 		this.statusSidebar.updateConnectionStatus(connectionStatus);
+	}
+
+	/**
+	 * Show action feedback in the status sidebar
+	 */
+	private showActionFeedback(action: string): void {
+		this.statusSidebar?.setLastAction(action);
 	}
 
 	/**
@@ -1038,6 +1059,9 @@ export class App {
 					this.repeat,
 				);
 
+				// Show action feedback
+				this.showActionFeedback(this.state.isPlaying ? "Playing" : "Paused");
+
 				// Fire-and-forget: Send D-Bus command without blocking UI
 				this.mpris.playPause().catch(() => {
 					// If D-Bus fails, revert the optimistic update
@@ -1045,6 +1069,7 @@ export class App {
 					if (this.state.currentTrack) {
 						this.state.currentTrack.isPlaying = this.state.isPlaying;
 					}
+					this.showActionFeedback("Command failed");
 				});
 
 				needsFullUpdate = false;
@@ -1052,6 +1077,7 @@ export class App {
 			}
 			case "n":
 				// Play from queue if available, otherwise use MPRIS next
+				this.showActionFeedback("Next track");
 				if (this.statusSidebar?.hasQueuedItems()) {
 					await this.playNextFromQueue();
 				} else {
@@ -1059,19 +1085,24 @@ export class App {
 				}
 				break;
 			case "p":
+				this.showActionFeedback("Previous track");
 				await this.mpris.previous();
 				break;
 			case "equal": // + key
 			case "plus":
+				this.showActionFeedback("Volume up");
 				await this.mpris.volumeUp();
 				break;
 			case "minus":
+				this.showActionFeedback("Volume down");
 				await this.mpris.volumeDown();
 				break;
 			case "right":
+				this.showActionFeedback("Seek forward");
 				await this.mpris.seekForward(SEEK_STEP_MS);
 				break;
 			case "left":
+				this.showActionFeedback("Seek backward");
 				await this.mpris.seekBackward(SEEK_STEP_MS);
 				break;
 			case "s": {
@@ -1094,10 +1125,14 @@ export class App {
 					this.repeat,
 				);
 
+				// Show action feedback
+				this.showActionFeedback(this.shuffle ? "Shuffle ON" : "Shuffle OFF");
+
 				// Fire-and-forget: Send D-Bus command without blocking UI
 				this.mpris.toggleShuffle(previousShuffle).catch(() => {
 					// If D-Bus fails, revert
 					this.shuffle = previousShuffle;
+					this.showActionFeedback("Command failed");
 				});
 
 				needsFullUpdate = false;
@@ -1129,10 +1164,14 @@ export class App {
 					this.repeat,
 				);
 
+				// Show action feedback
+				this.showActionFeedback(`Repeat: ${nextRepeat}`);
+
 				// Fire-and-forget: Send D-Bus command without blocking UI
 				this.mpris.cycleLoopStatus(previousRepeat as any).catch(() => {
 					// If D-Bus fails, revert
 					this.repeat = previousRepeat;
+					this.showActionFeedback("Command failed");
 				});
 
 				needsFullUpdate = false;

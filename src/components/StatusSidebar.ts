@@ -19,6 +19,9 @@ export interface ConnectionStatus {
 	spotifydRunning: boolean;
 	spotifydAuthenticated: boolean;
 	mprisConnected: boolean;
+	mprisBackend?: "native" | "typescript"; // Which MPRIS implementation is being used
+	lastAction?: string; // Last action performed (for feedback)
+	lastActionTime?: number; // Timestamp of last action
 }
 
 /**
@@ -35,6 +38,8 @@ export class StatusSidebar {
 	private connectionTitle: TextRenderable;
 	private spotifydStatusLabel: TextRenderable;
 	private mprisStatusLabel: TextRenderable;
+	private backendLabel: TextRenderable;
+	private activityLabel: TextRenderable;
 	private queueTitle: TextRenderable;
 	private queueItems: TextRenderable[] = [];
 	private queue: QueueItem[] = [];
@@ -43,6 +48,7 @@ export class StatusSidebar {
 		spotifydRunning: false,
 		spotifydAuthenticated: false,
 		mprisConnected: false,
+		mprisBackend: "native",
 	};
 
 	constructor(
@@ -62,6 +68,8 @@ export class StatusSidebar {
 		this.connectionTitle = this.createConnectionTitle();
 		this.spotifydStatusLabel = this.createSpotifydStatusLabel();
 		this.mprisStatusLabel = this.createMprisStatusLabel();
+		this.backendLabel = this.createBackendLabel();
+		this.activityLabel = this.createActivityLabel();
 		this.queueTitle = this.createQueueTitle();
 		this.queueItems = this.createQueueItems();
 	}
@@ -202,7 +210,49 @@ export class StatusSidebar {
 	}
 
 	private getMprisStatusColor(): string {
-		return this.connectionStatus.mprisConnected ? colors.success : colors.textDim;
+		return this.connectionStatus.mprisConnected
+			? colors.success
+			: colors.textDim;
+	}
+
+	private createBackendLabel(): TextRenderable {
+		return new TextRenderable(this.renderer, {
+			id: "backend-label",
+			content: this.getBackendText(),
+			fg: colors.textDim,
+			position: "absolute",
+			left: this.layout.rightSidebarX + 2,
+			top: this.layout.rightSidebarY + 13,
+		});
+	}
+
+	private getBackendText(): string {
+		const backend = this.connectionStatus.mprisBackend || "native";
+		return backend === "native" ? "Backend: Rust" : "Backend: TS";
+	}
+
+	private createActivityLabel(): TextRenderable {
+		return new TextRenderable(this.renderer, {
+			id: "activity-label",
+			content: "",
+			fg: colors.accent,
+			position: "absolute",
+			left: this.layout.rightSidebarX + 2,
+			top: this.layout.rightSidebarY + 14,
+		});
+	}
+
+	private getActivityText(): string {
+		const lastAction = this.connectionStatus.lastAction;
+		const lastTime = this.connectionStatus.lastActionTime;
+
+		if (!lastAction || !lastTime) return "";
+
+		// Only show activity for 3 seconds
+		const elapsed = Date.now() - lastTime;
+		if (elapsed > 3000) return "";
+
+		return lastAction;
 	}
 
 	private createQueueTitle(): TextRenderable {
@@ -212,14 +262,14 @@ export class StatusSidebar {
 			fg: colors.textDim,
 			position: "absolute",
 			left: this.layout.rightSidebarX + 2,
-			top: this.layout.rightSidebarY + 14,
+			top: this.layout.rightSidebarY + 16,
 		});
 	}
 
 	private createQueueItems(): TextRenderable[] {
 		// Calculate how many queue items can fit
-		const startY = this.layout.rightSidebarY + 16;
-		const availableHeight = this.layout.rightSidebarHeight - 18;
+		const startY = this.layout.rightSidebarY + 18;
+		const availableHeight = this.layout.rightSidebarHeight - 20;
 		const maxQueueDisplay = Math.max(0, availableHeight);
 
 		const items: TextRenderable[] = [];
@@ -360,6 +410,26 @@ export class StatusSidebar {
 		// Update MPRIS status
 		(this.mprisStatusLabel as any).content = this.getMprisStatusText();
 		(this.mprisStatusLabel as any).fg = this.getMprisStatusColor();
+
+		// Update backend label
+		(this.backendLabel as any).content = this.getBackendText();
+
+		// Update activity label
+		const activityText = this.getActivityText();
+		(this.activityLabel as any).content = activityText;
+		(this.activityLabel as any).fg = activityText
+			? colors.accent
+			: colors.textDim;
+	}
+
+	/**
+	 * Set the last action for activity feedback
+	 */
+	setLastAction(action: string): void {
+		this.connectionStatus.lastAction = action;
+		this.connectionStatus.lastActionTime = Date.now();
+		(this.activityLabel as any).content = action;
+		(this.activityLabel as any).fg = colors.accent;
 	}
 
 	/**
@@ -375,6 +445,8 @@ export class StatusSidebar {
 		this.renderer.root.add(this.connectionTitle);
 		this.renderer.root.add(this.spotifydStatusLabel);
 		this.renderer.root.add(this.mprisStatusLabel);
+		this.renderer.root.add(this.backendLabel);
+		this.renderer.root.add(this.activityLabel);
 		this.renderer.root.add(this.queueTitle);
 		for (const item of this.queueItems) {
 			this.renderer.root.add(item);
@@ -426,12 +498,20 @@ export class StatusSidebar {
 		(this.mprisStatusLabel as any).left = layout.rightSidebarX + 2;
 		(this.mprisStatusLabel as any).top = layout.rightSidebarY + 12;
 
+		// Update backend label
+		(this.backendLabel as any).left = layout.rightSidebarX + 2;
+		(this.backendLabel as any).top = layout.rightSidebarY + 13;
+
+		// Update activity label
+		(this.activityLabel as any).left = layout.rightSidebarX + 2;
+		(this.activityLabel as any).top = layout.rightSidebarY + 14;
+
 		// Update queue title
 		(this.queueTitle as any).left = layout.rightSidebarX + 2;
-		(this.queueTitle as any).top = layout.rightSidebarY + 14;
+		(this.queueTitle as any).top = layout.rightSidebarY + 16;
 
 		// Update queue items
-		const startY = layout.rightSidebarY + 16;
+		const startY = layout.rightSidebarY + 18;
 		this.queueItems.forEach((item, index) => {
 			(item as any).left = layout.rightSidebarX + 2;
 			(item as any).top = startY + index;

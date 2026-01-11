@@ -1,0 +1,33 @@
+{
+	"name": "mpris-native",
+	"version": "0.1.0",
+	"description": "Native Rust MPRIS bridge for Spotify TUI",
+	"main": "index.js",
+	"types": "index.d.ts",
+	"napi": {
+		"name": "mpris-native",
+		"triples": {
+			"defaults": true,
+			"additional": [
+				"x86_64-unknown-linux-gnu",
+				"aarch64-unknown-linux-gnu"
+			]
+		}
+	},
+	"scripts": {
+		"build": "cargo build --release && napi build --platform --release",
+		"build:debug": "cargo build && napi build --platform"
+	},
+	"keywords": [
+		"mpris",
+		"dbus",
+		"spotify",
+		"spotifyd",
+		"napi"
+	],
+	"author": "",
+	"license": "MIT",
+	"devDependencies": {
+		"@napi-rs/cli": "^2.18.0"
+	}
+}

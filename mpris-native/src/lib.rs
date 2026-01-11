@@ -1,0 +1,279 @@
+mod controller;
+mod error;
+mod supervisor;
+mod types;
+
+use controller::ControllerInner;
+use error::MprisError;
+use napi::bindgen_prelude::*;
+use napi::threadsafe_function::{ErrorStrategy, ThreadsafeFunction, ThreadsafeFunctionCallMode};
+use napi::JsFunction;
+use napi_derive::napi;
+use once_cell::sync::Lazy;
+use std::sync::Arc;
+use supervisor::SupervisorInner;
+use std::fs::OpenOptions;
+use tokio::runtime::Runtime;
+use tracing_subscriber::{fmt, EnvFilter};
+use types::{PlaybackState, RepeatMode, SpotifydConfig, SpotifydStatus};
+
+// Re-export types for TypeScript
+pub use types::{ConnectionStatus, TrackInfo};
+
+// Single shared tokio runtime
+static RUNTIME: Lazy<Runtime> = Lazy::new(|| {
+    tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(2)
+        .enable_all()
+        .build()
+        .expect("Failed to create Tokio runtime")
+});
+
+// Initialize tracing - logs to file instead of stdout to avoid cluttering TUI
+static INIT_TRACING: Lazy<()> = Lazy::new(|| {
+    // Create log directory
+    let log_dir = std::env::var("HOME")
+        .map(|home| std::path::PathBuf::from(home).join(".spotify-tui").join("logs"))
+        .unwrap_or_else(|_| std::path::PathBuf::from("/tmp/spotify-tui-logs"));
+
+    let _ = std::fs::create_dir_all(&log_dir);
+
+    // Create log file with timestamp
+    let log_file = log_dir.join("mpris-native.log");
+
+    // Open log file (truncate on each run for simplicity)
+    if let Ok(file) = OpenOptions::new()
+        .create(true)
+        .write(true)
+        .truncate(true)
+        .open(&log_file)
+    {
+        fmt()
+            .with_env_filter(
+                EnvFilter::try_from_default_env()
+                    .unwrap_or_else(|_| EnvFilter::new("info")),
+            )
+            .with_writer(move || file.try_clone().unwrap())
+            .init();
+    } else {
+        // Fallback to no logging if file can't be opened
+        fmt()
+            .with_env_filter(EnvFilter::new("off"))
+            .init();
+    }
+});
+
+#[napi]
+pub struct MprisController {
+    inner: Arc<ControllerInner>,
+}
+
+#[napi]
+impl MprisController {
+    #[napi(constructor)]
+    pub fn new() -> Result<Self> {
+        Lazy::force(&INIT_TRACING);
+
+        let inner = RUNTIME.block_on(async { ControllerInner::new().await })?;
+
+        Ok(Self {
+            inner: Arc::new(inner),
+        })
+    }
+
+    /// Connect to MPRIS D-Bus interface
+    #[napi]
+    pub async fn connect(&self) -> Result<()> {
+        let inner = self.inner.clone();
+        RUNTIME
+            .spawn(async move { inner.connect().await })
+            .await
+            .map_err(|e| Error::from_reason(e.to_string()))??;
+        Ok(())
+    }
+
+    /// Play or pause playback. Returns new playing state.
+    #[napi]
+    pub async fn play_pause(&self) -> Result<bool> {
+        let inner = self.inner.clone();
+        let result = RUNTIME
+            .spawn(async move { inner.play_pause().await })
+            .await
+            .map_err(|e| Error::from_reason(e.to_string()))??;
+        Ok(result)
+    }
+
+    /// Skip to next track
+    #[napi]
+    pub async fn next(&self) -> Result<()> {
+        let inner = self.inner.clone();
+        RUNTIME
+            .spawn(async move { inner.next().await })
+            .await
+            .map_err(|e| Error::from_reason(e.to_string()))??;
+        Ok(())
+    }
+
+    /// Skip to previous track
+    #[napi]
+    pub async fn previous(&self) -> Result<()> {
+        let inner = self.inner.clone();
+        RUNTIME
+            .spawn(async move { inner.previous().await })
+            .await
+            .map_err(|e| Error::from_reason(e.to_string()))??;
+        Ok(())
+    }
+
+    /// Seek by offset in milliseconds
+    #[napi]
+    pub async fn seek(&self, offset_ms: i64) -> Result<()> {
+        let inner = self.inner.clone();
+        RUNTIME
+            .spawn(async move { inner.seek(offset_ms).await })
+            .await
+            .map_err(|e| Error::from_reason(e.to_string()))??;
+        Ok(())
+    }
+
+    /// Set volume (0.0 - 1.0)
+    #[napi]
+    pub async fn set_volume(&self, volume: f64) -> Result<()> {
+        let inner = self.inner.clone();
+        RUNTIME
+            .spawn(async move { inner.set_volume(volume).await })
+            .await
+            .map_err(|e| Error::from_reason(e.to_string()))??;
+        Ok(())
+    }
+
+    /// Set shuffle mode
+    #[napi]
+    pub async fn set_shuffle(&self, shuffle: bool) -> Result<()> {
+        let inner = self.inner.clone();
+        RUNTIME
+            .spawn(async move { inner.set_shuffle(shuffle).await })
+            .await
+            .map_err(|e| Error::from_reason(e.to_string()))??;
+        Ok(())
+    }
+
+    /// Set repeat mode
+    #[napi]
+    pub async fn set_repeat(&self, repeat: RepeatMode) -> Result<()> {
+        let inner = self.inner.clone();
+        RUNTIME
+            .spawn(async move { inner.set_repeat(repeat).await })
+            .await
+            .map_err(|e| Error::from_reason(e.to_string()))??;
+        Ok(())
+    }
+
+    /// Get current playback state (synchronous)
+    #[napi]
+    pub fn get_state(&self) -> PlaybackState {
+        self.inner.get_state()
+    }
+
+    /// Refresh state from MPRIS (async - fetches fresh data from D-Bus)
+    #[napi]
+    pub async fn refresh_state(&self) -> Result<()> {
+        let inner = self.inner.clone();
+        RUNTIME
+            .spawn(async move { inner.refresh_state().await })
+            .await
+            .map_err(|e| Error::from_reason(e.to_string()))??;
+        Ok(())
+    }
+
+    /// Subscribe to state changes. Callback invoked on state updates.
+    #[napi(ts_args_type = "callback: (state: PlaybackState) => void")]
+    pub fn on_state_change(&self, callback: JsFunction) -> Result<()> {
+        let tsfn: ThreadsafeFunction<PlaybackState, ErrorStrategy::Fatal> = callback
+            .create_threadsafe_function(0, |ctx| Ok(vec![ctx.value]))?;
+
+        let inner = self.inner.clone();
+        RUNTIME.spawn(async move {
+            let mut rx = inner.subscribe_state_changes();
+            while let Ok(state) = rx.recv().await {
+                tsfn.call(state, ThreadsafeFunctionCallMode::NonBlocking);
+            }
+        });
+
+        Ok(())
+    }
+}
+
+#[napi]
+pub struct SpotifydSupervisor {
+    inner: Arc<SupervisorInner>,
+}
+
+#[napi]
+impl SpotifydSupervisor {
+    #[napi(constructor)]
+    pub fn new(config: Option<SpotifydConfig>) -> Self {
+        Lazy::force(&INIT_TRACING);
+
+        Self {
+            inner: Arc::new(SupervisorInner::new(config.unwrap_or_default())),
+        }
+    }
+
+    /// Start spotifyd and wait for D-Bus registration
+    #[napi]
+    pub async fn start(&self) -> Result<()> {
+        let inner = self.inner.clone();
+        RUNTIME
+            .spawn(async move { inner.start().await })
+            .await
+            .map_err(|e| Error::from_reason(e.to_string()))??;
+        Ok(())
+    }
+
+    /// Stop spotifyd gracefully
+    #[napi]
+    pub async fn stop(&self) -> Result<()> {
+        let inner = self.inner.clone();
+        RUNTIME
+            .spawn(async move { inner.stop().await })
+            .await
+            .map_err(|e| Error::from_reason(e.to_string()))??;
+        Ok(())
+    }
+
+    /// Get current spotifyd status (synchronous)
+    #[napi]
+    pub fn get_status(&self) -> SpotifydStatus {
+        self.inner.get_status()
+    }
+
+    /// Subscribe to status changes
+    #[napi(ts_args_type = "callback: (status: SpotifydStatus) => void")]
+    pub fn on_status_change(&self, callback: JsFunction) -> Result<()> {
+        let tsfn: ThreadsafeFunction<SpotifydStatus, ErrorStrategy::Fatal> = callback
+            .create_threadsafe_function(0, |ctx| Ok(vec![ctx.value]))?;
+
+        let inner = self.inner.clone();
+        RUNTIME.spawn(async move {
+            let mut rx = inner.subscribe_status();
+            while rx.changed().await.is_ok() {
+                let status = rx.borrow().clone();
+                tsfn.call(status, ThreadsafeFunctionCallMode::NonBlocking);
+            }
+        });
+
+        Ok(())
+    }
+
+    /// Check if spotifyd is healthy (synchronous)
+    #[napi]
+    pub async fn check_health(&self) -> Result<bool> {
+        let inner = self.inner.clone();
+        let healthy = RUNTIME
+            .spawn(async move { inner.check_health().await })
+            .await
+            .map_err(|e| Error::from_reason(e.to_string()))?;
+        Ok(healthy)
+    }
+}

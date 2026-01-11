@@ -59,3 +59,47 @@ export interface NowPlayingInfo {
 	shuffle: boolean;
 	loopStatus: LoopStatus;
 }
+
+/**
+ * Common interface for MPRIS services
+ * Both MprisService (TypeScript/dbus-next) and NativeMprisAdapter (Rust/zbus)
+ * implement this interface to allow drop-in replacement.
+ */
+export interface IMprisService {
+	// Connection management
+	connect(): Promise<boolean>;
+	disconnect(): Promise<void> | void;
+	isConnected(): boolean;
+	ensureConnection(): Promise<boolean>;
+
+	// Playback controls
+	play(): Promise<void>;
+	pause(): Promise<void>;
+	playPause(): Promise<void>;
+	next(): Promise<void>;
+	previous(): Promise<void>;
+	stop(): Promise<void>;
+	seek(offsetMicroseconds: number): Promise<void>;
+	setPosition(trackId: string, positionMicroseconds: number): Promise<void>;
+
+	// Properties
+	getPlaybackStatus(): Promise<PlaybackStatus>;
+	getMetadata(): Promise<MprisMetadata | null>;
+	getPosition(): Promise<number>;
+	getVolume(): Promise<number>;
+	setVolume(volume: number): Promise<void>;
+	getShuffle(): Promise<boolean>;
+	setShuffle(shuffle: boolean): Promise<void>;
+	getLoopStatus(): Promise<LoopStatus>;
+	setLoopStatus(status: LoopStatus): Promise<void>;
+
+	// Convenience methods
+	getPlayerState(): Promise<MprisPlayerState | null>;
+	getNowPlaying(): Promise<NowPlayingInfo | null>;
+	volumeUp(amount?: number): Promise<void>;
+	volumeDown(amount?: number): Promise<void>;
+	toggleShuffle(currentState?: boolean): Promise<boolean>;
+	cycleLoopStatus(currentStatus?: LoopStatus): Promise<LoopStatus>;
+	seekForward(ms?: number): Promise<void>;
+	seekBackward(ms?: number): Promise<void>;
+}
