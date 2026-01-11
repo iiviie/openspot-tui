@@ -104,8 +104,19 @@ impl ControllerInner {
         let conn = Connection::session().await?;
         info!("D-Bus session connection established");
 
-        // Find spotifyd service
-        let service_name = self.discover_player(&conn).await?;
+        // Try to find MPRIS service, if not found, try to activate it via TransferPlayback
+        let service_name = match self.discover_player(&conn).await {
+            Ok(name) => name,
+            Err(MprisError::PlayerNotFound) => {
+                info!("MPRIS not found, attempting to activate via TransferPlayback");
+                self.activate_spotifyd_mpris(&conn).await?;
+                // Wait a moment for MPRIS to register (200ms is usually enough)
+                tokio::time::sleep(Duration::from_millis(200)).await;
+                // Try again
+                self.discover_player(&conn).await?
+            }
+            Err(e) => return Err(e),
+        };
         info!("Found player service: {}", service_name);
 
         let player = PlayerProxy::builder(&conn)
@@ -148,6 +159,47 @@ impl ControllerInner {
                 .collect::<Vec<_>>()
         );
         Err(MprisError::PlayerNotFound)
+    }
+
+    /// Activate spotifyd MPRIS interface by calling TransferPlayback
+    /// This is needed because spotifyd 0.4.x only exposes MPRIS after becoming active
+    async fn activate_spotifyd_mpris(&self, conn: &Connection) -> Result<(), MprisError> {
+        let dbus = zbus::fdo::DBusProxy::new(conn).await?;
+        let names = dbus.list_names().await?;
+
+        // Find rs.spotifyd.instance* service
+        let spotifyd_service = names.iter()
+            .find(|n| n.as_str().starts_with("rs.spotifyd.instance"))
+            .cloned();
+
+        match spotifyd_service {
+            Some(service) => {
+                info!("Found spotifyd control service: {}", service);
+
+                // Call TransferPlayback method to activate MPRIS using Message API
+                use zbus::message::Builder;
+                let msg = Builder::method_call("/rs/spotifyd/Controls", "TransferPlayback")?
+                    .destination(service)?
+                    .interface("rs.spotifyd.Controls")?
+                    .build(&())?;
+
+                match conn.send(&msg).await {
+                    Ok(_) => {
+                        info!("TransferPlayback called successfully, MPRIS should now be available");
+                        Ok(())
+                    }
+                    Err(e) => {
+                        warn!("TransferPlayback failed: {}", e);
+                        // Not a fatal error - maybe spotifyd is already active
+                        Ok(())
+                    }
+                }
+            }
+            None => {
+                warn!("spotifyd control service (rs.spotifyd.instance*) not found - is spotifyd running?");
+                Err(MprisError::PlayerNotFound)
+            }
+        }
     }
 
     #[instrument(skip(self))]
