@@ -62,79 +62,81 @@ export class InputHandler {
 		// Command palette
 		if (key.ctrl && key.name === "p") {
 			this.commandPalette.show();
-			this.eventBus.emitSync("ui:commandPaletteOpened");
+			await this.eventBus.emit("ui:commandPaletteOpened", undefined);
 			return true;
 		}
 
 		// Playback controls
-		if (key.name === KEY_BINDINGS.PLAY_PAUSE) {
+		if ((KEY_BINDINGS.playPause as readonly string[]).includes(key.name)) {
 			await this.mpris.playPause();
-			this.eventBus.emitSync(
+			await this.eventBus.emit(
 				this.stateManager.isPlaying() ? "playback:pause" : "playback:play",
+				undefined,
 			);
 			return true;
 		}
 
-		if (key.name === KEY_BINDINGS.NEXT) {
+		if ((KEY_BINDINGS.next as readonly string[]).includes(key.name)) {
 			await this.mpris.next();
-			this.eventBus.emitSync("playback:next");
+			await this.eventBus.emit("playback:next", undefined);
 			return true;
 		}
 
-		if (key.name === KEY_BINDINGS.PREVIOUS) {
+		if ((KEY_BINDINGS.previous as readonly string[]).includes(key.name)) {
 			await this.mpris.previous();
-			this.eventBus.emitSync("playback:previous");
+			await this.eventBus.emit("playback:previous", undefined);
 			return true;
 		}
 
-		if (key.name === KEY_BINDINGS.SEEK_FORWARD) {
+		// Seek controls (using arrow keys)
+		if (key.name === "right" && key.shift) {
 			await this.mpris.seekForward(SEEK_STEP_MS);
 			return true;
 		}
 
-		if (key.name === KEY_BINDINGS.SEEK_BACKWARD) {
+		if (key.name === "left" && key.shift) {
 			await this.mpris.seekBackward(SEEK_STEP_MS);
 			return true;
 		}
 
-		// Volume controls
-		if (key.name === KEY_BINDINGS.VOLUME_UP) {
+		// Volume controls (using + and -)
+		if (key.name === "+" || key.name === "=") {
 			await this.mpris.volumeUp(0.05);
 			return true;
 		}
 
-		if (key.name === KEY_BINDINGS.VOLUME_DOWN) {
+		if (key.name === "-" || key.name === "_") {
 			await this.mpris.volumeDown(0.05);
 			return true;
 		}
 
-		// Shuffle and repeat
-		if (key.name === KEY_BINDINGS.SHUFFLE) {
+		// Shuffle and repeat (using s and r)
+		if (key.name === "s") {
 			const currentShuffle = this.stateManager.getShuffle();
 			const newShuffle = await this.mpris.toggleShuffle(currentShuffle);
-			this.eventBus.emitSync("playback:shuffleChanged", { shuffle: newShuffle });
+			this.eventBus.emit("playback:shuffleChanged", { shuffle: newShuffle });
 			return true;
 		}
 
-		if (key.name === KEY_BINDINGS.REPEAT) {
+		if (key.name === "r") {
 			const currentLoop = this.stateManager.getRepeat();
 			const newLoop = await this.mpris.cycleLoopStatus(currentLoop);
-			this.eventBus.emitSync("playback:loopChanged", { loopStatus: newLoop });
+			this.eventBus.emit("playback:loopChanged", { loopStatus: newLoop });
 			return true;
 		}
 
-		// Focus switching
-		if (key.name === KEY_BINDINGS.FOCUS_SIDEBAR) {
+		// Focus switching (using 1, 2, 3)
+		if (key.name === "1") {
 			this.stateManager.setFocus("sidebar");
 			return true;
 		}
 
-		if (key.name === KEY_BINDINGS.FOCUS_CONTENT) {
+		if (key.name === "2") {
 			this.stateManager.setFocus("content");
 			return true;
 		}
 
-		if (key.name === KEY_BINDINGS.FOCUS_QUEUE) {
+		if (key.name === "3") {
 			this.stateManager.setFocus("queue");
 			return true;
 		}
@@ -182,12 +184,13 @@ export class InputHandler {
 			}
 		} else if (key.name === "return") {
 			const selectedTrack = this.stateManager.getSelectedTrack();
-			if (selectedTrack) {
+			if (selectedTrack?.uri) {
 				await this.spotifyApi.playTrack(selectedTrack.uri);
 			}
-		} else if (key.name === KEY_BINDINGS.ADD_TO_QUEUE) {
+		} else if (key.name === "a") {
+			// Add to queue
 			const selectedTrack = this.stateManager.getSelectedTrack();
-			if (selectedTrack) {
+			if (selectedTrack?.uri) {
 				await this.spotifyApi.addToQueue(selectedTrack.uri);
 				this.stateManager.addToQueue(selectedTrack);
 			}
@@ -212,12 +215,17 @@ export class InputHandler {
 		} else if (key.name === "return") {
 			if (selectedIndex >= 0 && selectedIndex < queue.length) {
 				const track = queue[selectedIndex];
-				await this.spotifyApi.playTrack(track.uri);
+				if (track.uri) {
+					await this.spotifyApi.playTrack(track.uri);
+				}
 			}
-		} else if (key.name === KEY_BINDINGS.REMOVE_FROM_QUEUE) {
+		} else if (key.name === "d" || key.name === "delete") {
+			// Remove from queue
 			if (selectedIndex >= 0 && selectedIndex < queue.length) {
 				const track = queue[selectedIndex];
-				this.stateManager.removeFromQueue(track.uri);
+				if (track.uri) {
+					this.stateManager.removeFromQueue(track.uri);
+				}
 			}
 		}
 	}

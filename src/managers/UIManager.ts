@@ -46,10 +46,11 @@ export class UIManager {
 	 * Initialize all UI components
 	 */
 	private initializeComponents(): void {
-		this.sidebar = new Sidebar(this.renderer, this.layout);
+		// Initialize components with empty data for now
+		this.sidebar = new Sidebar(this.renderer, this.layout, []);
 		this.contentWindow = new ContentWindow(this.renderer, this.layout);
-		this.nowPlaying = new NowPlaying(this.renderer, this.layout);
-		this.statusBar = new StatusBar(this.renderer, this.layout);
+		this.nowPlaying = new NowPlaying(this.renderer, this.layout, null);
+		this.statusBar = new StatusBar(this.renderer, this.layout, null);
 		this.statusSidebar = new StatusSidebar(this.renderer, this.layout);
 		this.searchBar = new SearchBar(this.renderer, this.layout);
 		this.commandPalette = new CommandPalette(this.renderer, this.layout);
@@ -125,91 +126,66 @@ export class UIManager {
 	 * Update playback UI (now playing, status bar)
 	 */
 	private updatePlaybackUI(): void {
-		const state = this.stateManager.getState();
-
-		this.nowPlaying.update({
-			isPlaying: state.isPlaying,
-			position: state.position,
-			duration: state.duration,
-			volume: state.volume,
-			shuffle: state.shuffle,
-			repeat: state.repeat,
-		});
-
-		this.statusBar.update({
-			isPlaying: state.isPlaying,
-			shuffle: state.shuffle,
-			repeat: state.repeat,
-		});
+		// Re-render components when playback state changes
+		this.nowPlaying.render();
+		this.statusBar.render();
 	}
 
 	/**
 	 * Update track UI (now playing)
 	 */
 	private updateTrackUI(): void {
-		const track = this.stateManager.getCurrentTrack();
-
-		if (track) {
-			this.nowPlaying.update({
-				title: track.title,
-				artist: track.artist,
-				album: track.album,
-				artUrl: track.artUrl,
-			});
-		}
+		// Re-render now playing when track changes
+		this.nowPlaying.render();
 	}
 
 	/**
 	 * Update queue UI
 	 */
 	private updateQueueUI(): void {
-		const queue = this.stateManager.getQueue();
-		this.contentWindow.updateQueue(queue);
+		// Re-render content window when queue changes
+		this.contentWindow.render();
 	}
 
 	/**
 	 * Update track list UI
 	 */
 	private updateTrackListUI(): void {
-		const tracks = this.stateManager.getTracks();
-		const selectedIndex = this.stateManager.getSelectedTrackIndex();
-		this.contentWindow.updateTracks(tracks, selectedIndex);
+		// Re-render content window when track list changes
+		this.contentWindow.render();
 	}
 
 	/**
 	 * Update focus UI (highlight focused panel)
 	 */
 	private updateFocusUI(): void {
-		const focus = this.stateManager.getFocus();
-
-		this.sidebar.setFocused(focus === "sidebar");
-		this.contentWindow.setFocused(focus === "content" || focus === "queue");
+		// Re-render all panels when focus changes
+		this.sidebar.render();
+		this.contentWindow.render();
 	}
 
 	/**
 	 * Update connection status UI
 	 */
 	private updateConnectionStatusUI(): void {
-		// This will be called when connection status changes
-		// For now, we'll keep the existing connection status logic
+		// Re-render status sidebar when connection changes
+		this.statusSidebar.render();
 	}
 
 	/**
 	 * Set sidebar items
 	 */
 	setSidebarItems(items: MenuItem[]): void {
-		const selectedIndex = this.stateManager.getSelectedSidebarIndex();
-		this.sidebar.updateItems(items, selectedIndex);
 		this.stateManager.setSidebarItems(items);
+		this.sidebar.render();
 	}
 
 	/**
 	 * Update sidebar selection
 	 */
 	updateSidebarSelection(index: number): void {
-		const items = this.stateManager.getSidebarItems();
-		this.sidebar.updateItems(items, index);
 		this.stateManager.setSelectedSidebarIndex(index);
+		this.sidebar.render();
 	}
 
 	/**
@@ -242,12 +218,11 @@ export class UIManager {
 		this.sidebar.updateLayout(layout);
 		this.contentWindow.updateLayout(layout);
 		this.nowPlaying.updateLayout(layout);
-		this.statusBar.updateLayout(layout);
 		this.statusSidebar.updateLayout(layout);
 		this.searchBar.updateLayout(layout);
 		this.commandPalette.updateLayout(layout);
 
-		this.eventBus.emitSync("ui:terminalResized", {
+		this.eventBus.emit("ui:terminalResized", {
 			width: layout.termWidth,
 			height: layout.termHeight,
 		});

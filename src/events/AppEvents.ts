@@ -4,7 +4,7 @@
  */
 
 import type { LoopStatus } from "../types/mpris";
-import type { SpotifyTrack } from "../types/spotify";
+import type { Track } from "../types";
 import type { EventEmitter } from "./EventEmitter";
 import { createEventEmitter } from "./EventEmitter";
 
@@ -45,14 +45,14 @@ export interface ConnectionStatusChanged {
  * Queue updated event
  */
 export interface QueueUpdated {
-	tracks: SpotifyTrack[];
+	tracks: Track[];
 }
 
 /**
  * Track list updated event (for playlists, albums, etc.)
  */
 export interface TrackListUpdated {
-	tracks: SpotifyTrack[];
+	tracks: Track[];
 	source: "playlist" | "album" | "search" | "saved";
 }
 
@@ -82,7 +82,7 @@ export interface AppEventMap {
 
 	// Queue events
 	"queue:updated": QueueUpdated;
-	"queue:trackAdded": { track: SpotifyTrack };
+	"queue:trackAdded": { track: Track };
 	"queue:trackRemoved": { trackUri: string };
 	"queue:cleared": void;
 

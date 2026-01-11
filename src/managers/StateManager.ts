@@ -9,9 +9,8 @@ import type {
 	CurrentTrack,
 	FocusPanel,
 	MenuItem,
+	Track,
 } from "../types";
-import type { ConnectionStatus } from "../components";
-import type { SpotifyTrack } from "../types/spotify";
 
 /**
  * Manages application state with event-driven updates
@@ -22,6 +21,7 @@ export class StateManager {
 
 	constructor() {
 		this.state = {
+			selectedMenuIndex: 0,
 			currentTrack: null,
 			isPlaying: false,
 			position: 0,
@@ -62,6 +62,10 @@ export class StateManager {
 				album: data.album,
 				artUrl: data.artUrl,
 				uri: data.uri,
+				currentTime: "0:00",
+				totalTime: `${Math.floor(data.duration / 60)}:${String(data.duration % 60).padStart(2, "0")}`,
+				progress: 0,
+				isPlaying: this.state.isPlaying,
 			};
 			this.state.duration = data.duration;
 		});
@@ -113,11 +117,11 @@ export class StateManager {
 		return this.state.repeat;
 	}
 
-	getQueue(): SpotifyTrack[] {
+	getQueue(): Track[] {
 		return this.state.queue;
 	}
 
-	getTracks(): SpotifyTrack[] {
+	getTracks(): Track[] {
 		return this.state.tracks;
 	}
 
@@ -169,24 +173,24 @@ export class StateManager {
 		this.state.repeat = repeat;
 	}
 
-	setQueue(queue: SpotifyTrack[]): void {
+	setQueue(queue: Track[]): void {
 		this.state.queue = queue;
-		this.eventBus.emitSync("queue:updated", { tracks: queue });
+		this.eventBus.emit("queue:updated", { tracks: queue });
 	}
 
-	setTracks(tracks: SpotifyTrack[], source: "playlist" | "album" | "search" | "saved"): void {
+	setTracks(tracks: Track[], source: "playlist" | "album" | "search" | "saved"): void {
 		this.state.tracks = tracks;
-		this.eventBus.emitSync("trackList:updated", { tracks, source });
+		this.eventBus.emit("trackList:updated", { tracks, source });
 	}
 
 	setSelectedTrackIndex(index: number): void {
 		this.state.selectedTrackIndex = index;
-		this.eventBus.emitSync("trackList:selectionChanged", { index });
+		this.eventBus.emit("trackList:selectionChanged", { index });
 	}
 
 	setFocus(focus: FocusPanel): void {
 		this.state.focus = focus;
-		this.eventBus.emitSync("ui:focusChanged", { panel: focus });
+		this.eventBus.emit("ui:focusChanged", { panel: focus });
 	}
 
 	setSidebarItems(items: MenuItem[]): void {
@@ -204,10 +208,10 @@ export class StateManager {
 	/**
 	 * Add track to queue
 	 */
-	addToQueue(track: SpotifyTrack): void {
+	addToQueue(track: Track): void {
 		this.state.queue.push(track);
-		this.eventBus.emitSync("queue:updated", { tracks: this.state.queue });
-		this.eventBus.emitSync("queue:trackAdded", { track });
+		this.eventBus.emit("queue:updated", { tracks: this.state.queue });
+		this.eventBus.emit("queue:trackAdded", { track });
 	}
 
 	/**
@@ -215,8 +219,8 @@ export class StateManager {
 	 */
 	removeFromQueue(trackUri: string): void {
 		this.state.queue = this.state.queue.filter((t) => t.uri !== trackUri);
-		this.eventBus.emitSync("queue:updated", { tracks: this.state.queue });
-		this.eventBus.emitSync("queue:trackRemoved", { trackUri });
+		this.eventBus.emit("queue:updated", { tracks: this.state.queue });
+		this.eventBus.emit("queue:trackRemoved", { trackUri });
 	}
 
 	/**
@@ -224,14 +228,14 @@ export class StateManager {
 	 */
 	clearQueue(): void {
 		this.state.queue = [];
-		this.eventBus.emitSync("queue:updated", { tracks: [] });
-		this.eventBus.emitSync("queue:cleared");
+		this.eventBus.emit("queue:updated", { tracks: [] });
+		this.eventBus.emit("queue:cleared", undefined);
 	}
 
 	/**
 	 * Get selected track from track list
 	 */
-	getSelectedTrack(): SpotifyTrack | null {
+	getSelectedTrack(): Track | null {
 		if (
 			this.state.selectedTrackIndex >= 0 &&
 			this.state.selectedTrackIndex < this.state.tracks.length

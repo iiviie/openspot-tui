@@ -89,6 +89,16 @@ export class App {
 		currentTrack: null,
 		queue: mockQueue,
 		isPlaying: false,
+		position: 0,
+		duration: 0,
+		volume: 1.0,
+		shuffle: false,
+		repeat: "None",
+		tracks: [],
+		selectedTrackIndex: 0,
+		focus: "sidebar",
+		sidebarItems: [],
+		selectedSidebarIndex: 0,
 	};
 
 	// Status state

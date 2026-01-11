@@ -7,6 +7,7 @@ export interface Track {
 	title: string;
 	artist?: string;
 	album?: string;
+	uri?: string;
 }
 
 /**
@@ -17,6 +18,7 @@ export interface CurrentTrack extends Track {
 	totalTime: string;
 	progress: number; // 0-1
 	isPlaying: boolean;
+	artUrl?: string;
 }
 
 /**
@@ -26,7 +28,13 @@ export interface MenuItem {
 	id: string;
 	label: string;
 	icon?: string;
+	action?: () => void | Promise<void>;
 }
+
+/**
+ * Focus panel type
+ */
+export type FocusPanel = "sidebar" | "content" | "queue";
 
 /**
  * Application state
@@ -36,6 +44,17 @@ export interface AppState {
 	currentTrack: CurrentTrack | null;
 	queue: Track[];
 	isPlaying: boolean;
+	// Extended state for managers
+	position: number;
+	duration: number;
+	volume: number;
+	shuffle: boolean;
+	repeat: "None" | "Playlist" | "Track";
+	tracks: Track[];
+	selectedTrackIndex: number;
+	focus: FocusPanel;
+	sidebarItems: MenuItem[];
+	selectedSidebarIndex: number;
 }
 
 /**
