@@ -448,12 +448,20 @@ export class SpotifydManager {
 		if (this.process && this.managedByUs) {
 			try {
 				const pid = this.process.pid;
-				// Send SIGTERM for graceful shutdown
-				this.process.kill("SIGTERM");
 
-				// Force kill after 2 seconds if still running
-				if (pid) {
-					setTimeout(() => {
+				if (force && pid) {
+					// Force kill immediately on app exit
+					try {
+						process.kill(pid, "SIGKILL");
+					} catch {
+						// Process already dead
+					}
+				} else if (pid) {
+					// Send SIGTERM for graceful shutdown
+					this.process.kill("SIGTERM");
+
+					// Schedule force kill after 2s, but unref so it doesn't block exit
+					const timeout = setTimeout(() => {
 						try {
 							// Check if process is still running and kill it
 							process.kill(pid, 0); // Check if alive
@@ -462,6 +470,9 @@ export class SpotifydManager {
 							// Process already dead
 						}
 					}, 2000);
+
+					// Don't let this timeout keep Node.js alive
+					timeout.unref();
 				}
 			} catch {
 				// Process might already be dead

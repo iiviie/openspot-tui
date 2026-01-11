@@ -24,6 +24,11 @@ import {
 	type SpotifyApiService,
 	type SpotifydManager,
 } from "./services";
+import { shutdownCacheService } from "./services/CacheService";
+import {
+	getPersistentCache,
+	PersistentCacheKeys,
+} from "./services/PersistentCacheService";
 import type {
 	AppState,
 	CliRenderer,
@@ -712,17 +717,68 @@ export class App {
 	 * Load saved tracks
 	 */
 	private async loadSavedTracks(): Promise<void> {
+		const persistentCache = getPersistentCache();
+		const cacheKey = PersistentCacheKeys.savedTracks();
+
+		// Try to load from disk cache first (instant startup!)
+		const cachedTracks = persistentCache.get<SpotifyTrack[]>(cacheKey);
+		if (cachedTracks && cachedTracks.length > 0) {
+			const age = persistentCache.getAge(cacheKey);
+			const ageMinutes = age ? Math.floor(age / 60000) : 0;
+
+			// Show cached data immediately
+			this.contentWindow.updateTracks(cachedTracks, "Liked Songs");
+			this.viewStack = ["songs"];
+
+			logger.info(`Loaded ${cachedTracks.length} tracks from cache (${ageMinutes}m old)`);
+
+			// Refresh in background if cache is older than 5 minutes
+			if (!age || age > 5 * 60 * 1000) {
+				this.refreshSavedTracksInBackground();
+			}
+			return;
+		}
+
+		// No cache - show loading and fetch
 		this.contentWindow.setLoading(true, "Loading saved tracks...");
 
 		try {
 			const response = await this.spotifyApi.getSavedTracks(50);
 			const tracks = response.items.map((item) => item.track);
+
+			// Update UI
 			this.contentWindow.updateTracks(tracks, "Liked Songs");
 			this.viewStack = ["songs"];
+
+			// Save to persistent cache for next startup
+			persistentCache.set(cacheKey, tracks);
+
+			logger.info(`Loaded ${tracks.length} tracks from API`);
 		} catch (error) {
 			const message =
 				error instanceof Error ? error.message : "Failed to load tracks";
 			this.contentWindow.setStatus(`Error: ${message}`);
+		}
+	}
+
+	/**
+	 * Refresh saved tracks in background (stale-while-revalidate)
+	 */
+	private async refreshSavedTracksInBackground(): Promise<void> {
+		try {
+			const response = await this.spotifyApi.getSavedTracks(50);
+			const tracks = response.items.map((item) => item.track);
+
+			// Update UI quietly (no loading indicator)
+			this.contentWindow.updateTracks(tracks, "Liked Songs");
+
+			// Update persistent cache
+			getPersistentCache().set(PersistentCacheKeys.savedTracks(), tracks);
+
+			logger.debug("Refreshed saved tracks in background");
+		} catch (error) {
+			// Silent failure - user already sees cached data
+			logger.warn("Background refresh failed:", error);
 		}
 	}
 
@@ -1187,9 +1243,16 @@ export class App {
 	 * Setup process signal handlers for graceful shutdown
 	 */
 	private setupSignalHandlers(): void {
-		process.on("SIGINT", () => this.exit());
-		process.on("SIGTERM", () => this.exit());
-		process.on("exit", () => cleanupTerminal());
+		// Use once() to prevent multiple handlers
+		process.once("SIGINT", () => {
+			this.exit();
+		});
+		process.once("SIGTERM", () => {
+			this.exit();
+		});
+		process.once("exit", () => {
+			cleanupTerminal();
+		});
 
 		// Listen for terminal resize events
 		process.stdout.on("resize", () => this.handleResize());
@@ -1215,8 +1278,11 @@ export class App {
 	 * Gracefully exit the application
 	 */
 	private exit(): void {
+		// Cleanup synchronously
 		this.cleanup();
 		cleanupTerminal();
+
+		// Force exit immediately - don't wait for async operations
 		process.exit(0);
 	}
 
@@ -1224,19 +1290,37 @@ export class App {
 	 * Cleanup resources
 	 */
 	private cleanup(): void {
+		logger.debug("Cleaning up resources...");
+
 		// Stop update loop
 		if (this.updateInterval) {
 			clearInterval(this.updateInterval);
+			this.updateInterval = null;
 		}
 
-		// Disconnect MPRIS
-		this.mpris?.disconnect();
+		// Disconnect MPRIS (synchronous)
+		try {
+			this.mpris?.disconnect();
+		} catch (e) {
+			logger.warn("MPRIS disconnect failed:", e);
+		}
 
-		// Stop spotifyd - force kill if we started it to ensure music stops
-		if (this.spotifydManager?.isManagedByUs()) {
-			this.spotifydManager.stop(true); // Force kill
-		} else {
-			this.spotifydManager?.stop();
+		// Stop spotifyd - force kill immediately for quick exit
+		try {
+			if (this.spotifydManager?.isManagedByUs()) {
+				this.spotifydManager.stop(true); // Force kill immediately
+			} else {
+				this.spotifydManager?.stop();
+			}
+		} catch (e) {
+			logger.warn("Spotifyd stop failed:", e);
+		}
+
+		// Shutdown cache service (clears intervals)
+		try {
+			shutdownCacheService();
+		} catch (e) {
+			logger.warn("Cache shutdown failed:", e);
 		}
 
 		// Try to stop/destroy renderer
@@ -1247,16 +1331,22 @@ export class App {
 			if (typeof (this.renderer as any).destroy === "function") {
 				(this.renderer as any).destroy();
 			}
-		} catch {
+		} catch (e) {
 			// Ignore errors during cleanup
 		}
 
 		// Destroy components
-		this.sidebar?.destroy();
-		this.searchBar?.destroy();
-		this.contentWindow?.destroy();
-		this.statusSidebar?.destroy();
-		this.nowPlaying?.destroy();
-		this.commandPalette?.destroy();
+		try {
+			this.sidebar?.destroy();
+			this.searchBar?.destroy();
+			this.contentWindow?.destroy();
+			this.statusSidebar?.destroy();
+			this.nowPlaying?.destroy();
+			this.commandPalette?.destroy();
+		} catch (e) {
+			// Ignore errors during component cleanup
+		}
+
+		logger.debug("Cleanup complete");
 	}
 }

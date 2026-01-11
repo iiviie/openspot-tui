@@ -171,6 +171,7 @@ export class CacheService {
 
 // Singleton instance for the app
 let cacheServiceInstance: CacheService | null = null;
+let cleanupIntervalId: NodeJS.Timeout | null = null;
 
 export function getCacheService(): CacheService {
 	if (!cacheServiceInstance) {
@@ -179,11 +180,25 @@ export function getCacheService(): CacheService {
 		});
 
 		// Setup periodic cleanup
-		setInterval(() => {
+		cleanupIntervalId = setInterval(() => {
 			cacheServiceInstance?.cleanup();
 		}, CACHE_CONFIG.CLEANUP_INTERVAL_MS);
+
+		// Unref the interval so it doesn't keep the process alive
+		cleanupIntervalId.unref();
 	}
 	return cacheServiceInstance;
+}
+
+/**
+ * Cleanup cache service and stop intervals
+ */
+export function shutdownCacheService(): void {
+	if (cleanupIntervalId) {
+		clearInterval(cleanupIntervalId);
+		cleanupIntervalId = null;
+	}
+	cacheServiceInstance = null;
 }
 
 /**
