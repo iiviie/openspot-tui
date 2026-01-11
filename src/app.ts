@@ -175,10 +175,8 @@ export class App {
 			logger.warn("spotifyd not running");
 			logger.always("   Press Ctrl+P → 'Authenticate Spotifyd' to set up\n");
 			// Don't exit - allow app to run without spotifyd
-		} else if (this.spotifydManager.isManagedByUs()) {
-			// Give spotifyd a moment to fully initialize its D-Bus interface
-			await new Promise((resolve) => setTimeout(resolve, 1000));
 		}
+		// Note: Removed 1s wait - MPRIS connection has retry + TransferPlayback logic
 	}
 
 	/**
