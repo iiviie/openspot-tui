@@ -8,15 +8,6 @@ import type { CliRenderer } from "../types";
 export type ToastType = "info" | "success" | "warning" | "error" | "action";
 
 /**
- * Toast action button
- */
-export interface ToastAction {
-	label: string;
-	key: string; // Keyboard shortcut (e.g., 'c' for copy)
-	action: () => void;
-}
-
-/**
  * Toast configuration
  */
 export interface ToastConfig {
@@ -24,33 +15,31 @@ export interface ToastConfig {
 	type: ToastType;
 	title: string;
 	message: string;
-	url?: string; // Optional URL to display/copy
 	duration?: number | null; // Auto-dismiss duration (ms), null = persistent
 	dismissable?: boolean; // Can be manually dismissed (default: true)
-	actions?: ToastAction[]; // Optional action buttons
 	onDismiss?: () => void; // Callback when dismissed
 }
 
 /**
  * Toast notification component
- * Displays temporary notifications in the top-right corner
+ * Creates renderables ONCE and updates them as needed (like CommandPalette)
  */
 export class Toast {
 	private renderer: CliRenderer;
 	private config: ToastConfig;
 	private x: number;
 	private y: number;
-	private width: number = 45; // Fixed width for toasts
-	private height: number = 0; // Calculated based on content
+	private width: number = 45;
+	private height: number = 0;
 
-	private container!: BoxRenderable;
-	private titleLabel!: TextRenderable;
-	private messageLabel!: TextRenderable;
-	private urlLabel?: TextRenderable;
-	private actionHintLabel?: TextRenderable;
-	private dismissHintLabel!: TextRenderable;
-
+	private createdAt: number;
 	private dismissed: boolean = false;
+	private addedToRenderer: boolean = false;
+
+	// Renderables - created once, reused
+	private container: BoxRenderable;
+	private titleLabel: TextRenderable;
+	private messageLabel: TextRenderable;
 
 	constructor(
 		renderer: CliRenderer,
@@ -65,9 +54,15 @@ export class Toast {
 		};
 		this.x = x;
 		this.y = y;
+		this.createdAt = Date.now();
 
+		// Calculate height before creating renderables
 		this.calculateHeight();
-		this.createComponents();
+
+		// Create renderables ONCE in constructor
+		this.container = this.createContainer();
+		this.titleLabel = this.createTitleLabel();
+		this.messageLabel = this.createMessageLabel();
 	}
 
 	/**
@@ -75,27 +70,9 @@ export class Toast {
 	 */
 	private calculateHeight(): void {
 		let height = 3; // Border + title
-
-		// Message lines (word wrap at width - 4 for borders and padding)
 		const maxLineWidth = this.width - 4;
 		const messageLines = this.wrapText(this.config.message, maxLineWidth);
 		height += messageLines.length;
-
-		// URL line
-		if (this.config.url) {
-			height += 2; // URL + spacing
-		}
-
-		// Action hints
-		if (this.config.actions && this.config.actions.length > 0) {
-			height += 1;
-		}
-
-		// Dismiss hint
-		if (this.config.dismissable) {
-			height += 1;
-		}
-
 		this.height = height;
 	}
 
@@ -144,24 +121,23 @@ export class Toast {
 	private getIcon(): string {
 		switch (this.config.type) {
 			case "info":
-				return "ℹ";
+				return "i";
 			case "success":
-				return "✓";
+				return "+";
 			case "warning":
-				return "⚠";
+				return "!";
 			case "error":
-				return "✗";
+				return "x";
 			case "action":
-				return "→";
+				return ">";
 		}
 	}
 
 	/**
-	 * Create UI components
+	 * Create the container box renderable
 	 */
-	private createComponents(): void {
-		// Container box
-		this.container = new BoxRenderable(this.renderer, {
+	private createContainer(): BoxRenderable {
+		return new BoxRenderable(this.renderer, {
 			id: `toast-${this.config.id}`,
 			position: "absolute",
 			left: this.x,
@@ -170,11 +146,16 @@ export class Toast {
 			height: this.height,
 			borderColor: this.getBorderColor(),
 			borderStyle: "single",
+			backgroundColor: colors.bgSecondary,
 		});
+	}
 
-		// Title with icon
+	/**
+	 * Create the title label renderable
+	 */
+	private createTitleLabel(): TextRenderable {
 		const icon = this.getIcon();
-		this.titleLabel = new TextRenderable(this.renderer, {
+		return new TextRenderable(this.renderer, {
 			id: `toast-${this.config.id}-title`,
 			content: `${icon} ${this.config.title}`,
 			fg: this.getBorderColor(),
@@ -182,11 +163,15 @@ export class Toast {
 			left: this.x + 2,
 			top: this.y + 1,
 		});
+	}
 
-		// Message (multi-line)
+	/**
+	 * Create the message label renderable
+	 */
+	private createMessageLabel(): TextRenderable {
 		const messageLines = this.wrapText(this.config.message, this.width - 4);
 		const messageContent = messageLines.join("\n");
-		this.messageLabel = new TextRenderable(this.renderer, {
+		return new TextRenderable(this.renderer, {
 			id: `toast-${this.config.id}-message`,
 			content: messageContent,
 			fg: colors.textPrimary,
@@ -194,90 +179,69 @@ export class Toast {
 			left: this.x + 2,
 			top: this.y + 2,
 		});
-
-		let currentY = this.y + 2 + messageLines.length;
-
-		// URL (if present)
-		if (this.config.url) {
-			currentY += 1; // Spacing
-			const truncatedUrl =
-				this.config.url.length > this.width - 6
-					? this.config.url.substring(0, this.width - 9) + "..."
-					: this.config.url;
-			this.urlLabel = new TextRenderable(this.renderer, {
-				id: `toast-${this.config.id}-url`,
-				content: `URL: ${truncatedUrl}`,
-				fg: colors.accent,
-				position: "absolute",
-				left: this.x + 2,
-				top: currentY,
-			});
-			currentY += 1;
-		}
-
-		// Action hints
-		if (this.config.actions && this.config.actions.length > 0) {
-			const actionHints = this.config.actions
-				.map((a) => `[${a.key}]: ${a.label}`)
-				.join(" ");
-			this.actionHintLabel = new TextRenderable(this.renderer, {
-				id: `toast-${this.config.id}-actions`,
-				content: actionHints,
-				fg: colors.textDim,
-				position: "absolute",
-				left: this.x + 2,
-				top: currentY,
-			});
-			currentY += 1;
-		}
-
-		// Dismiss hint
-		if (this.config.dismissable) {
-			this.dismissHintLabel = new TextRenderable(this.renderer, {
-				id: `toast-${this.config.id}-dismiss`,
-				content: "[Esc]: Dismiss",
-				fg: colors.textDim,
-				position: "absolute",
-				left: this.x + 2,
-				top: currentY,
-			});
-		}
 	}
 
 	/**
-	 * Render the toast
+	 * Check if toast should be auto-dismissed based on duration
 	 */
-	render(): void {
-		if (this.dismissed) return;
+	shouldAutoDismiss(): boolean {
+		if (this.config.duration === null || this.config.duration === undefined) {
+			return false;
+		}
+		return Date.now() - this.createdAt >= this.config.duration;
+	}
+
+	/**
+	 * Add renderables to the renderer tree (call once)
+	 */
+	addToRenderer(): void {
+		if (this.addedToRenderer || this.dismissed) return;
 
 		this.renderer.root.add(this.container);
 		this.renderer.root.add(this.titleLabel);
 		this.renderer.root.add(this.messageLabel);
-		if (this.urlLabel) this.renderer.root.add(this.urlLabel);
-		if (this.actionHintLabel) this.renderer.root.add(this.actionHintLabel);
-		if (this.dismissHintLabel) this.renderer.root.add(this.dismissHintLabel);
+		this.addedToRenderer = true;
+	}
+
+	/**
+	 * Remove renderables from the renderer tree
+	 */
+	removeFromRenderer(): void {
+		if (!this.addedToRenderer) return;
+
+		try {
+			this.renderer.root.remove(`toast-${this.config.id}`);
+			this.renderer.root.remove(`toast-${this.config.id}-title`);
+			this.renderer.root.remove(`toast-${this.config.id}-message`);
+		} catch {
+			// Elements might not exist
+		}
+		this.addedToRenderer = false;
+	}
+
+	/**
+	 * Update positions (for stacking) - updates existing renderables
+	 */
+	updatePosition(): void {
+		if (!this.addedToRenderer) return;
+
+		// Update positions using the renderable properties
+		(this.container as any).left = this.x;
+		(this.container as any).top = this.y;
+		(this.titleLabel as any).left = this.x + 2;
+		(this.titleLabel as any).top = this.y + 1;
+		(this.messageLabel as any).left = this.x + 2;
+		(this.messageLabel as any).top = this.y + 2;
 	}
 
 	/**
 	 * Handle keyboard input
 	 */
 	handleInput(key: string): boolean {
-		// Check action keys
-		if (this.config.actions) {
-			for (const action of this.config.actions) {
-				if (key === action.key) {
-					action.action();
-					return true;
-				}
-			}
-		}
-
-		// Check dismiss
 		if (this.config.dismissable && key === "escape") {
 			this.dismiss();
 			return true;
 		}
-
 		return false;
 	}
 
@@ -288,6 +252,7 @@ export class Toast {
 		if (this.dismissed) return;
 
 		this.dismissed = true;
+		this.removeFromRenderer();
 		this.config.onDismiss?.();
 	}
 
@@ -322,9 +287,22 @@ export class Toast {
 	/**
 	 * Update Y position (for stacking)
 	 */
-	updatePosition(y: number): void {
+	setY(y: number): void {
 		this.y = y;
-		// Re-create components with new position
-		this.createComponents();
+		this.updatePosition();
+	}
+
+	/**
+	 * Get current Y position
+	 */
+	getY(): number {
+		return this.y;
+	}
+
+	/**
+	 * Check if added to renderer
+	 */
+	isAddedToRenderer(): boolean {
+		return this.addedToRenderer;
 	}
 }

@@ -14,7 +14,7 @@ export type {
 	SpotifydState,
 } from "./StatusSidebar";
 export { Toast } from "./Toast";
-export type { ToastAction, ToastConfig, ToastType } from "./Toast";
+export type { ToastConfig, ToastType } from "./Toast";
 export {
 	ToastManager,
 	getToastManager,

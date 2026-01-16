@@ -607,11 +607,6 @@ export class App {
 		// Check if spotifyd is running - we may need to stop it to avoid port conflicts
 		const wasRunning = this.spotifydManager.isManagedByUs();
 		if (wasRunning) {
-			this.toastManager.info(
-				"Spotifyd Auth",
-				"Stopping spotifyd to avoid port conflicts...",
-				2000,
-			);
 			this.spotifydState = "stopping";
 			this.updateConnectionStatus();
 			this.spotifydManager.stop();
@@ -621,64 +616,12 @@ export class App {
 
 		this.spotifydState = "authenticating";
 		this.updateConnectionStatus();
-		this.toastManager.info(
-			"Spotifyd Auth",
-			"Opening browser for authentication...",
-			3000,
-		);
 		this.render();
 
-		let toastId: string | null = null;
-
-		const result = await this.spotifydManager.authenticate((status, url) => {
-			// Show action toast with URL if available
-			if (url && !toastId) {
-				toastId = this.toastManager.action(
-					"Complete Spotifyd Login",
-					"Complete authentication in your browser",
-					{
-						url,
-						actions: [
-							{
-								label: "Copy URL",
-								key: "c",
-								action: async () => {
-									const { copyToClipboard } = await import("./utils");
-									const success = await copyToClipboard(url);
-									if (success) {
-										this.toastManager.success(
-											"Copied!",
-											"URL copied to clipboard",
-											2000,
-										);
-									} else {
-										this.toastManager.warning(
-											"Copy Failed",
-											"Please copy the URL manually from the toast",
-											4000,
-										);
-									}
-									this.render();
-								},
-							},
-						],
-					},
-				);
-				this.render();
-			}
-		});
-
-		// Dismiss the action toast if it exists
-		if (toastId) {
-			this.toastManager.dismiss(toastId);
-		}
+		const result = await this.spotifydManager.authenticate();
 
 		if (result.success) {
-			this.toastManager.success(
-				"Auth Successful!",
-				"Restarting spotifyd...",
-				3000,
-			);
+			this.toastManager.success("Spotifyd Auth", "Starting spotifyd...", 2000);
 			this.spotifydState = "starting";
 			this.updateConnectionStatus();
 			this.render();
@@ -694,17 +637,13 @@ export class App {
 				const connected = await this.reconnectMprisWithRetry(5);
 				if (connected) {
 					this.mprisState = "connected";
-					this.toastManager.success(
-						"Complete!",
-						"Spotifyd authenticated and connected",
-						3000,
-					);
+					this.toastManager.success("Connected", "Spotifyd ready", 2000);
 				} else {
 					this.mprisState = "disconnected";
 					this.toastManager.warning(
 						"MPRIS Failed",
-						"Auth OK but MPRIS connection failed - try manually",
-						5000,
+						"Try manual connection",
+						4000,
 					);
 				}
 				this.updateConnectionStatus();
@@ -712,17 +651,13 @@ export class App {
 			} else {
 				this.spotifydState = "stopped";
 				this.updateConnectionStatus();
-				this.toastManager.error(
-					"Restart Failed",
-					`Auth OK but restart failed: ${startResult.message}`,
-					5000,
-				);
+				this.toastManager.error("Restart Failed", startResult.message, 4000);
 				this.render();
 			}
 		} else {
 			this.spotifydState = wasRunning ? "stopped" : "not_authenticated";
 			this.updateConnectionStatus();
-			this.toastManager.error("Auth Failed", result.message, 5000);
+			this.toastManager.error("Auth Failed", result.message, 4000);
 			this.render();
 			// Try to restart spotifyd if we stopped it
 			if (wasRunning) {
@@ -739,66 +674,14 @@ export class App {
 	 * Login to Spotify Web API
 	 */
 	private async loginToSpotify(): Promise<void> {
-		this.toastManager.info(
-			"Spotify Login",
-			"Opening browser for authentication...",
-			3000,
-		);
-		this.render();
-
 		try {
 			const authService = await import("./services/AuthService").then((m) =>
 				m.getAuthService(),
 			);
 
-			let toastId: string | null = null;
+			await authService.login();
 
-			const credentials = await authService.login((url) => {
-				// URL is ready - show action toast with copy option
-				toastId = this.toastManager.action(
-					"Complete Login",
-					"Complete authentication in your browser",
-					{
-						url,
-						actions: [
-							{
-								label: "Copy URL",
-								key: "c",
-								action: async () => {
-									const { copyToClipboard } = await import("./utils");
-									const success = await copyToClipboard(url);
-									if (success) {
-										this.toastManager.success(
-											"Copied!",
-											"URL copied to clipboard",
-											2000,
-										);
-									} else {
-										this.toastManager.warning(
-											"Copy Failed",
-											"Please copy the URL manually from the toast",
-											4000,
-										);
-									}
-									this.render();
-								},
-							},
-						],
-					},
-				);
-				this.render();
-			});
-
-			// Dismiss the action toast if it exists
-			if (toastId) {
-				this.toastManager.dismiss(toastId);
-			}
-
-			this.toastManager.success(
-				"Login Successful!",
-				"Loading your library...",
-				3000,
-			);
+			this.toastManager.success("Logged In", "Loading library...", 2000);
 			this.render();
 
 			// Reload library data
@@ -808,7 +691,7 @@ export class App {
 			this.updateConnectionStatus();
 		} catch (error) {
 			const message = error instanceof Error ? error.message : "Login failed";
-			this.toastManager.error("Login Failed", message, 5000);
+			this.toastManager.error("Login Failed", message, 4000);
 			this.render();
 			logger.error("Login failed:", error);
 		}
@@ -875,24 +758,8 @@ export class App {
 			this.viewStack = [];
 
 			// Show success toast
-			this.toastManager.success(
-				"Logged Out",
-				"Your account has been logged out",
-				3000,
-			);
+			this.toastManager.success("Logged Out", "Credentials cleared", 2000);
 			this.render();
-
-			// Show login prompt after short delay
-			setTimeout(() => {
-				this.toastManager.action(
-					"Login Required",
-					"Press Ctrl+P → 'Login to Spotify' to access your library",
-					{
-						duration: 8000,
-					},
-				);
-				this.render();
-			}, 3500);
 
 			// Update connection status
 			this.updateConnectionStatus();
@@ -900,7 +767,7 @@ export class App {
 			logger.info("Logged out successfully");
 		} catch (error) {
 			const message = error instanceof Error ? error.message : "Logout failed";
-			this.toastManager.error("Logout Error", message, 5000);
+			this.toastManager.error("Logout Error", message, 4000);
 			this.render();
 			logger.error("Logout failed:", error);
 		}
@@ -1009,12 +876,10 @@ export class App {
 		// If neither is authenticated, prompt for spotifyd first
 		if (!webApiLoggedIn && !spotifydAuth) {
 			setTimeout(() => {
-				this.toastManager.action(
+				this.toastManager.info(
 					"Setup Required",
-					"Authenticate spotifyd for playback. Press Ctrl+P → 'Authenticate Spotifyd'",
-					{
-						duration: 10000,
-					},
+					"Press Ctrl+P to authenticate",
+					6000,
 				);
 				this.render();
 			}, 2000);
@@ -1022,12 +887,10 @@ export class App {
 		// If spotifyd is auth'd but Web API isn't
 		else if (!webApiLoggedIn && spotifydAuth) {
 			setTimeout(() => {
-				this.toastManager.action(
+				this.toastManager.info(
 					"Login Required",
-					"Login to Spotify to access your library. Press Ctrl+P → 'Login to Spotify'",
-					{
-						duration: 10000,
-					},
+					"Press Ctrl+P to login to Spotify",
+					6000,
 				);
 				this.render();
 			}, 2000);
@@ -1035,17 +898,14 @@ export class App {
 		// If Web API is auth'd but spotifyd isn't
 		else if (webApiLoggedIn && !spotifydAuth) {
 			setTimeout(() => {
-				this.toastManager.action(
-					"Playback Setup",
-					"Authenticate spotifyd for playback. Press Ctrl+P → 'Authenticate Spotifyd'",
-					{
-						duration: 10000,
-					},
+				this.toastManager.info(
+					"Spotifyd Setup",
+					"Press Ctrl+P to authenticate spotifyd",
+					6000,
 				);
 				this.render();
 			}, 2000);
 		}
-		// Both authenticated - all good!
 	}
 
 	/**
@@ -1318,6 +1178,8 @@ export class App {
 				);
 				// Update connection status to reflect current state
 				this.updateConnectionStatus();
+				// Full render to update toasts
+				this.render();
 			} catch (error) {
 				// Log error but keep interval running
 				logger.error("Update loop error", error);
