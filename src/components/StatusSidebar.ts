@@ -46,6 +46,8 @@ export interface ConnectionStatus {
 	mprisConnected: boolean;
 	mprisState?: MprisState; // Granular state
 	mprisBackend?: "native" | "typescript"; // Which MPRIS implementation is being used
+	webApiLoggedIn?: boolean; // Web API authentication status
+	username?: string; // Logged in username
 	lastAction?: string; // Last action performed (for feedback)
 	lastActionTime?: number; // Timestamp of last action
 }
@@ -66,6 +68,8 @@ export class StatusSidebar {
 	private mprisStatusLabel: TextRenderable;
 	private backendLabel: TextRenderable;
 	private activityLabel: TextRenderable;
+	private accountTitle: TextRenderable;
+	private accountStatusLabel: TextRenderable;
 	private queueTitle: TextRenderable;
 	private queueItems: TextRenderable[] = [];
 	private queue: QueueItem[] = [];
@@ -96,6 +100,8 @@ export class StatusSidebar {
 		this.mprisStatusLabel = this.createMprisStatusLabel();
 		this.backendLabel = this.createBackendLabel();
 		this.activityLabel = this.createActivityLabel();
+		this.accountTitle = this.createAccountTitle();
+		this.accountStatusLabel = this.createAccountStatusLabel();
 		this.queueTitle = this.createQueueTitle();
 		this.queueItems = this.createQueueItems();
 	}
@@ -357,6 +363,42 @@ export class StatusSidebar {
 		return lastAction;
 	}
 
+	private createAccountTitle(): TextRenderable {
+		return new TextRenderable(this.renderer, {
+			id: "account-title",
+			content: "ACCOUNT",
+			fg: colors.textDim,
+			position: "absolute",
+			left: this.layout.rightSidebarX + 2,
+			top: this.layout.rightSidebarY + 16,
+		});
+	}
+
+	private createAccountStatusLabel(): TextRenderable {
+		return new TextRenderable(this.renderer, {
+			id: "account-status",
+			content: this.getAccountStatusText(),
+			fg: this.getAccountStatusColor(),
+			position: "absolute",
+			left: this.layout.rightSidebarX + 2,
+			top: this.layout.rightSidebarY + 17,
+		});
+	}
+
+	private getAccountStatusText(): string {
+		if (this.connectionStatus.webApiLoggedIn) {
+			const username = this.connectionStatus.username || "User";
+			return `Logged in: ${username}`;
+		}
+		return "Not logged in";
+	}
+
+	private getAccountStatusColor(): string {
+		return this.connectionStatus.webApiLoggedIn
+			? colors.success
+			: colors.textDim;
+	}
+
 	private createQueueTitle(): TextRenderable {
 		return new TextRenderable(this.renderer, {
 			id: "queue-title",
@@ -522,6 +564,10 @@ export class StatusSidebar {
 		(this.activityLabel as any).fg = activityText
 			? colors.accent
 			: colors.textDim;
+
+		// Update account status
+		(this.accountStatusLabel as any).content = this.getAccountStatusText();
+		(this.accountStatusLabel as any).fg = this.getAccountStatusColor();
 	}
 
 	/**
@@ -549,6 +595,8 @@ export class StatusSidebar {
 		this.renderer.root.add(this.mprisStatusLabel);
 		this.renderer.root.add(this.backendLabel);
 		this.renderer.root.add(this.activityLabel);
+		this.renderer.root.add(this.accountTitle);
+		this.renderer.root.add(this.accountStatusLabel);
 		this.renderer.root.add(this.queueTitle);
 		for (const item of this.queueItems) {
 			this.renderer.root.add(item);

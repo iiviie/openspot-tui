@@ -186,8 +186,9 @@ export class AuthService {
 	/**
 	 * Start the OAuth2 login flow
 	 * Opens browser and waits for callback
+	 * @param onUrlReady - Optional callback when OAuth URL is ready (before browser opens)
 	 */
-	async login(): Promise<StoredCredentials> {
+	async login(onUrlReady?: (url: string) => void): Promise<StoredCredentials> {
 		return new Promise((resolve, reject) => {
 			// Generate PKCE challenge
 			this.pendingChallenge = this.generatePKCE();
@@ -274,6 +275,9 @@ export class AuthService {
 				logger.always("If the browser doesn't open, visit this URL:\n");
 				logger.always(authUrl);
 				logger.always("\nWaiting for authentication...\n");
+
+				// Call the callback with the URL before opening browser
+				onUrlReady?.(authUrl);
 
 				// Try to open browser
 				try {

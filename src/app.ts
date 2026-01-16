@@ -6,6 +6,8 @@ import {
 	SearchBar,
 	Sidebar,
 	StatusSidebar,
+	ToastManager,
+	getToastManager,
 	type Command,
 	type ConnectionStatus,
 } from "./components";
@@ -87,6 +89,7 @@ export class App {
 	private statusSidebar!: StatusSidebar;
 	private nowPlaying!: NowPlaying;
 	private commandPalette!: CommandPalette;
+	private toastManager!: ToastManager;
 
 	// Application state
 	private state: AppState = {
@@ -158,6 +161,9 @@ export class App {
 
 			// Load saved tracks (Songs) as default view
 			await this.loadSavedTracks();
+
+			// Check auth status and show prompts if needed
+			this.checkAuthStatusAndPrompt();
 
 			// Auto-activate spotifyd as playback device (so user doesn't need Spotify open)
 			await this.activateSpotifydDevice();
@@ -421,6 +427,9 @@ export class App {
 		this.commandPalette = new CommandPalette(this.renderer, this.layout);
 		this.commandPalette.setCommands(this.buildCommands());
 
+		// Toast manager
+		this.toastManager = getToastManager(this.renderer, this.layout);
+
 		// Set initial focus
 		this.updateFocus();
 
@@ -598,7 +607,11 @@ export class App {
 		// Check if spotifyd is running - we may need to stop it to avoid port conflicts
 		const wasRunning = this.spotifydManager.isManagedByUs();
 		if (wasRunning) {
-			this.contentWindow.setStatus("Stopping spotifyd for authentication...");
+			this.toastManager.info(
+				"Spotifyd Auth",
+				"Stopping spotifyd to avoid port conflicts...",
+				2000,
+			);
 			this.spotifydState = "stopping";
 			this.updateConnectionStatus();
 			this.spotifydManager.stop();
@@ -608,19 +621,67 @@ export class App {
 
 		this.spotifydState = "authenticating";
 		this.updateConnectionStatus();
-		this.contentWindow.setStatus(
-			"Starting authentication - browser will open...",
+		this.toastManager.info(
+			"Spotifyd Auth",
+			"Opening browser for authentication...",
+			3000,
 		);
+		this.render();
 
-		const result = await this.spotifydManager.authenticate((status, _url) => {
-			// Update status in real-time as authentication progresses
-			this.contentWindow.setStatus(status);
+		let toastId: string | null = null;
+
+		const result = await this.spotifydManager.authenticate((status, url) => {
+			// Show action toast with URL if available
+			if (url && !toastId) {
+				toastId = this.toastManager.action(
+					"Complete Spotifyd Login",
+					"Complete authentication in your browser",
+					{
+						url,
+						actions: [
+							{
+								label: "Copy URL",
+								key: "c",
+								action: async () => {
+									const { copyToClipboard } = await import("./utils");
+									const success = await copyToClipboard(url);
+									if (success) {
+										this.toastManager.success(
+											"Copied!",
+											"URL copied to clipboard",
+											2000,
+										);
+									} else {
+										this.toastManager.warning(
+											"Copy Failed",
+											"Please copy the URL manually from the toast",
+											4000,
+										);
+									}
+									this.render();
+								},
+							},
+						],
+					},
+				);
+				this.render();
+			}
 		});
 
+		// Dismiss the action toast if it exists
+		if (toastId) {
+			this.toastManager.dismiss(toastId);
+		}
+
 		if (result.success) {
-			this.contentWindow.setStatus("Auth successful! Restarting spotifyd...");
+			this.toastManager.success(
+				"Auth Successful!",
+				"Restarting spotifyd...",
+				3000,
+			);
 			this.spotifydState = "starting";
 			this.updateConnectionStatus();
+			this.render();
 
 			// Restart spotifyd with new credentials
 			const startResult = await this.spotifydManager.start();
@@ -633,25 +694,36 @@ export class App {
 				const connected = await this.reconnectMprisWithRetry(5);
 				if (connected) {
 					this.mprisState = "connected";
-					this.contentWindow.setStatus("Authentication complete!");
+					this.toastManager.success(
+						"Complete!",
+						"Spotifyd authenticated and connected",
+						3000,
+					);
 				} else {
 					this.mprisState = "disconnected";
-					this.contentWindow.setStatus(
+					this.toastManager.warning(
+						"MPRIS Failed",
 						"Auth OK but MPRIS connection failed - try manually",
+						5000,
 					);
 				}
 				this.updateConnectionStatus();
+				this.render();
 			} else {
 				this.spotifydState = "stopped";
 				this.updateConnectionStatus();
-				this.contentWindow.setStatus(
+				this.toastManager.error(
+					"Restart Failed",
 					`Auth OK but restart failed: ${startResult.message}`,
+					5000,
 				);
+				this.render();
 			}
 		} else {
 			this.spotifydState = wasRunning ? "stopped" : "not_authenticated";
 			this.updateConnectionStatus();
-			this.contentWindow.setStatus(`Auth failed: ${result.message}`);
+			this.toastManager.error("Auth Failed", result.message, 5000);
+			this.render();
 			// Try to restart spotifyd if we stopped it
 			if (wasRunning) {
 				this.spotifydState = "starting";
@@ -667,26 +739,77 @@ export class App {
 	 * Login to Spotify Web API
 	 */
 	private async loginToSpotify(): Promise<void> {
-		this.contentWindow.setStatus("Opening browser for Spotify login...");
+		this.toastManager.info(
+			"Spotify Login",
+			"Opening browser for authentication...",
+			3000,
+		);
 		this.render();
 
 		try {
 			const authService = await import("./services/AuthService").then((m) =>
 				m.getAuthService(),
 			);
-			this.contentWindow.setStatus("Waiting for login in browser...");
 
-			const credentials = await authService.login();
+			let toastId: string | null = null;
 
-			this.contentWindow.setStatus("Login successful! Loading library...");
+			const credentials = await authService.login((url) => {
+				// URL is ready - show action toast with copy option
+				toastId = this.toastManager.action(
+					"Complete Login",
+					"Complete authentication in your browser",
+					{
+						url,
+						actions: [
+							{
+								label: "Copy URL",
+								key: "c",
+								action: async () => {
+									const { copyToClipboard } = await import("./utils");
+									const success = await copyToClipboard(url);
+									if (success) {
+										this.toastManager.success(
+											"Copied!",
+											"URL copied to clipboard",
+											2000,
+										);
+									} else {
+										this.toastManager.warning(
+											"Copy Failed",
+											"Please copy the URL manually from the toast",
+											4000,
+										);
+									}
+									this.render();
+								},
+							},
+						],
+					},
+				);
+				this.render();
+			});
+
+			// Dismiss the action toast if it exists
+			if (toastId) {
+				this.toastManager.dismiss(toastId);
+			}
+
+			this.toastManager.success(
+				"Login Successful!",
+				"Loading your library...",
+				3000,
+			);
+			this.render();
 
 			// Reload library data
 			await this.loadSavedTracks();
 
-			this.contentWindow.setStatus("Logged in successfully!");
+			// Update connection status to show logged in
+			this.updateConnectionStatus();
 		} catch (error) {
 			const message = error instanceof Error ? error.message : "Login failed";
-			this.contentWindow.setStatus(`Login error: ${message}`);
+			this.toastManager.error("Login Failed", message, 5000);
+			this.render();
 			logger.error("Login failed:", error);
 		}
 	}
@@ -749,15 +872,36 @@ export class App {
 
 			// Clear UI state
 			this.contentWindow.updateTracks([], "");
-			this.contentWindow.setStatus(
-				"Logged out - Press Ctrl+P → 'Login to Spotify' to log back in",
-			);
 			this.viewStack = [];
+
+			// Show success toast
+			this.toastManager.success(
+				"Logged Out",
+				"Your account has been logged out",
+				3000,
+			);
+			this.render();
+
+			// Show login prompt after short delay
+			setTimeout(() => {
+				this.toastManager.action(
+					"Login Required",
+					"Press Ctrl+P → 'Login to Spotify' to access your library",
+					{
+						duration: 8000,
+					},
+				);
+				this.render();
+			}, 3500);
+
+			// Update connection status
+			this.updateConnectionStatus();
 
 			logger.info("Logged out successfully");
 		} catch (error) {
 			const message = error instanceof Error ? error.message : "Logout failed";
-			this.contentWindow.setStatus(`Logout error: ${message}`);
+			this.toastManager.error("Logout Error", message, 5000);
+			this.render();
 			logger.error("Logout failed:", error);
 		}
 	}
@@ -827,6 +971,10 @@ export class App {
 			}
 		}
 
+		// Check if Web API is authenticated
+		const configService = getConfigService();
+		const webApiLoggedIn = configService.hasCredentials();
+
 		const connectionStatus: ConnectionStatus = {
 			spotifydInstalled: spotifydStatus.installed,
 			spotifydRunning: spotifydStatus.running,
@@ -835,6 +983,7 @@ export class App {
 			mprisConnected: this.mpris?.isConnected() ?? false,
 			mprisState: this.mprisState,
 			mprisBackend: useNative ? "native" : "typescript",
+			webApiLoggedIn,
 		};
 
 		this.statusSidebar.updateConnectionStatus(connectionStatus);
@@ -845,6 +994,58 @@ export class App {
 	 */
 	private showActionFeedback(action: string): void {
 		this.statusSidebar?.setLastAction(action);
+	}
+
+	/**
+	 * Check authentication status and show prompts if needed
+	 */
+	private checkAuthStatusAndPrompt(): void {
+		const configService = getConfigService();
+		const spotifydStatus = this.spotifydManager.getStatus();
+
+		const webApiLoggedIn = configService.hasCredentials();
+		const spotifydAuth = spotifydStatus.authenticated;
+
+		// If neither is authenticated, prompt for spotifyd first
+		if (!webApiLoggedIn && !spotifydAuth) {
+			setTimeout(() => {
+				this.toastManager.action(
+					"Setup Required",
+					"Authenticate spotifyd for playback. Press Ctrl+P → 'Authenticate Spotifyd'",
+					{
+						duration: 10000,
+					},
+				);
+				this.render();
+			}, 2000);
+		}
+		// If spotifyd is auth'd but Web API isn't
+		else if (!webApiLoggedIn && spotifydAuth) {
+			setTimeout(() => {
+				this.toastManager.action(
+					"Login Required",
+					"Login to Spotify to access your library. Press Ctrl+P → 'Login to Spotify'",
+					{
+						duration: 10000,
+					},
+				);
+				this.render();
+			}, 2000);
+		}
+		// If Web API is auth'd but spotifyd isn't
+		else if (webApiLoggedIn && !spotifydAuth) {
+			setTimeout(() => {
+				this.toastManager.action(
+					"Playback Setup",
+					"Authenticate spotifyd for playback. Press Ctrl+P → 'Authenticate Spotifyd'",
+					{
+						duration: 10000,
+					},
+				);
+				this.render();
+			}, 2000);
+		}
+		// Both authenticated - all good!
 	}
 
 	/**
@@ -1096,6 +1297,8 @@ export class App {
 		this.contentWindow.render();
 		this.statusSidebar.render();
 		this.nowPlaying.render();
+		// Render toasts last (on top of everything)
+		this.toastManager.render();
 	}
 
 	/**
@@ -1135,6 +1338,12 @@ export class App {
 	 * Handle keyboard input based on current mode
 	 */
 	private handleKeyPress(key: KeyEvent): void {
+		// Check if toast manager handles the input first (highest priority)
+		if (this.toastManager.handleInput(key.name)) {
+			this.render(); // Re-render if toast handled input
+			return;
+		}
+
 		// If command palette is visible, route input to it
 		if (this.commandPalette.getIsVisible()) {
 			const handled = this.commandPalette.handleInput(

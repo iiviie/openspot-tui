@@ -13,3 +13,10 @@ export type {
 	MprisState,
 	SpotifydState,
 } from "./StatusSidebar";
+export { Toast } from "./Toast";
+export type { ToastAction, ToastConfig, ToastType } from "./Toast";
+export {
+	ToastManager,
+	getToastManager,
+	resetToastManager,
+} from "./ToastManager";
