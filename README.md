@@ -248,3 +248,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - [spotifyd](https://github.com/Spotifyd/spotifyd) - The Spotify daemon that makes this possible
 - [spotify-tui (Rust)](https://github.com/Rigellute/spotify-tui) - Inspiration for this project
 - [@opentui/core](https://github.com/nicholasgriffintn/opentui) - Terminal UI framework
+`

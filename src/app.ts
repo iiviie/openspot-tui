@@ -25,6 +25,7 @@ import {
 	type SpotifydManager,
 } from "./services";
 import { shutdownCacheService } from "./services/CacheService";
+import { getConfigService } from "./services/ConfigService";
 import {
 	getPersistentCache,
 	PersistentCacheKeys,
@@ -134,6 +135,10 @@ export class App {
 	private lastShuffleTime: number = 0;
 	private lastRepeatTime: number = 0;
 
+	// Granular connection state tracking
+	private spotifydState: import("./components").SpotifydState = "stopped";
+	private mprisState: import("./components").MprisState = "disconnected";
+
 	/**
 	 * Initialize and start the application
 	 */
@@ -192,16 +197,19 @@ export class App {
 		this.mpris = getMprisService();
 
 		// Connect in background without blocking TUI startup
-		this.mpris.connect().then((connected) => {
-			if (!connected) {
-				logger.warn("Could not connect to spotifyd. Make sure it's running.");
-				logger.always("Run: spotifyd --no-daemon");
-			} else {
-				logger.info("MPRIS connection established");
-			}
-		}).catch((error) => {
-			logger.error("MPRIS connection error:", error);
-		});
+		this.mpris
+			.connect()
+			.then((connected) => {
+				if (!connected) {
+					logger.warn("Could not connect to spotifyd. Make sure it's running.");
+					logger.always("Run: spotifyd --no-daemon");
+				} else {
+					logger.info("MPRIS connection established");
+				}
+			})
+			.catch((error) => {
+				logger.error("MPRIS connection error:", error);
+			});
 	}
 
 	/**
@@ -425,6 +433,24 @@ export class App {
 	 */
 	private buildCommands(): Command[] {
 		return [
+			// Account section
+			{
+				id: "api-login",
+				label: "Login to Spotify",
+				category: "Account",
+				action: async () => {
+					await this.loginToSpotify();
+				},
+			},
+			{
+				id: "api-logout",
+				label: "Logout",
+				category: "Account",
+				action: async () => {
+					await this.logoutFromSpotify();
+				},
+			},
+
 			// Spotifyd section
 			{
 				id: "spotifyd-authenticate",
@@ -565,15 +591,23 @@ export class App {
 		// Force re-render to show status updates
 		this.render();
 
+		// Set authenticating state
+		this.spotifydState = "authenticating";
+		this.updateConnectionStatus();
+
 		// Check if spotifyd is running - we may need to stop it to avoid port conflicts
 		const wasRunning = this.spotifydManager.isManagedByUs();
 		if (wasRunning) {
 			this.contentWindow.setStatus("Stopping spotifyd for authentication...");
+			this.spotifydState = "stopping";
+			this.updateConnectionStatus();
 			this.spotifydManager.stop();
 			// Wait for it to fully stop
 			await new Promise((resolve) => setTimeout(resolve, 500));
 		}
 
+		this.spotifydState = "authenticating";
+		this.updateConnectionStatus();
 		this.contentWindow.setStatus(
 			"Starting authentication - browser will open...",
 		);
@@ -585,26 +619,146 @@ export class App {
 
 		if (result.success) {
 			this.contentWindow.setStatus("Auth successful! Restarting spotifyd...");
+			this.spotifydState = "starting";
 			this.updateConnectionStatus();
 
 			// Restart spotifyd with new credentials
 			const startResult = await this.spotifydManager.start();
 			if (startResult.success) {
-				// Reconnect MPRIS
-				await new Promise((resolve) => setTimeout(resolve, 1000));
-				await this.mpris.connect();
-				this.contentWindow.setStatus("Authentication complete!");
+				this.spotifydState = "running";
+				this.mprisState = "connecting";
+				this.updateConnectionStatus();
+
+				// Reconnect MPRIS with retry logic
+				const connected = await this.reconnectMprisWithRetry(5);
+				if (connected) {
+					this.mprisState = "connected";
+					this.contentWindow.setStatus("Authentication complete!");
+				} else {
+					this.mprisState = "disconnected";
+					this.contentWindow.setStatus(
+						"Auth OK but MPRIS connection failed - try manually",
+					);
+				}
+				this.updateConnectionStatus();
 			} else {
+				this.spotifydState = "stopped";
+				this.updateConnectionStatus();
 				this.contentWindow.setStatus(
 					`Auth OK but restart failed: ${startResult.message}`,
 				);
 			}
 		} else {
+			this.spotifydState = wasRunning ? "stopped" : "not_authenticated";
+			this.updateConnectionStatus();
 			this.contentWindow.setStatus(`Auth failed: ${result.message}`);
 			// Try to restart spotifyd if we stopped it
 			if (wasRunning) {
+				this.spotifydState = "starting";
+				this.updateConnectionStatus();
 				await this.spotifydManager.start();
+				this.spotifydState = "running";
+				this.updateConnectionStatus();
 			}
+		}
+	}
+
+	/**
+	 * Login to Spotify Web API
+	 */
+	private async loginToSpotify(): Promise<void> {
+		this.contentWindow.setStatus("Opening browser for Spotify login...");
+		this.render();
+
+		try {
+			const authService = await import("./services/AuthService").then((m) =>
+				m.getAuthService(),
+			);
+			this.contentWindow.setStatus("Waiting for login in browser...");
+
+			const credentials = await authService.login();
+
+			this.contentWindow.setStatus("Login successful! Loading library...");
+
+			// Reload library data
+			await this.loadSavedTracks();
+
+			this.contentWindow.setStatus("Logged in successfully!");
+		} catch (error) {
+			const message = error instanceof Error ? error.message : "Login failed";
+			this.contentWindow.setStatus(`Login error: ${message}`);
+			logger.error("Login failed:", error);
+		}
+	}
+
+	/**
+	 * Reconnect to MPRIS with retry logic and exponential backoff
+	 * @param maxAttempts - Maximum number of connection attempts
+	 * @returns true if connected, false if all retries failed
+	 */
+	private async reconnectMprisWithRetry(maxAttempts = 5): Promise<boolean> {
+		const delays = [500, 1000, 2000, 3000, 4000]; // Exponential backoff delays
+
+		for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+			this.mprisState = attempt === 1 ? "connecting" : "reconnecting";
+			this.updateConnectionStatus();
+			this.contentWindow.setStatus(
+				`Connecting to MPRIS (attempt ${attempt}/${maxAttempts})...`,
+			);
+
+			const connected = await this.mpris.connect();
+			if (connected) {
+				this.mprisState = "connected";
+				this.updateConnectionStatus();
+				this.contentWindow.setStatus("MPRIS connected!");
+				return true;
+			}
+
+			// Wait before retrying (except on last attempt)
+			if (attempt < maxAttempts) {
+				const delay = delays[attempt - 1] || 3000;
+				await new Promise((resolve) => setTimeout(resolve, delay));
+			}
+		}
+
+		// All retries exhausted
+		this.mprisState = "disconnected";
+		this.updateConnectionStatus();
+		this.contentWindow.setStatus("MPRIS connection failed after all retries");
+		return false;
+	}
+
+	/**
+	 * Logout from Spotify
+	 * Clears credentials and all caches
+	 */
+	private async logoutFromSpotify(): Promise<void> {
+		try {
+			const configService = getConfigService();
+			const persistentCache = getPersistentCache();
+
+			// Clear credentials
+			configService.clearCredentials();
+
+			// Clear all caches
+			const cacheService = await import("./services/CacheService").then((m) =>
+				m.getCacheService(),
+			);
+			cacheService.clear();
+			persistentCache.clearAll();
+
+			// Clear UI state
+			this.contentWindow.updateTracks([], "");
+			this.contentWindow.setStatus(
+				"Logged out - Press Ctrl+P → 'Login to Spotify' to log back in",
+			);
+			this.viewStack = [];
+
+			logger.info("Logged out successfully");
+		} catch (error) {
+			const message = error instanceof Error ? error.message : "Logout failed";
+			this.contentWindow.setStatus(`Logout error: ${message}`);
+			logger.error("Logout failed:", error);
 		}
 	}
 
@@ -644,11 +798,42 @@ export class App {
 		// Determine which backend is being used
 		const useNative = process.env.SPOTIFY_TUI_USE_NATIVE !== "0";
 
+		// Determine spotifyd granular state (unless manually set during operations)
+		if (
+			this.spotifydState !== "starting" &&
+			this.spotifydState !== "stopping" &&
+			this.spotifydState !== "authenticating"
+		) {
+			if (!spotifydStatus.installed) {
+				this.spotifydState = "not_installed";
+			} else if (!spotifydStatus.authenticated) {
+				this.spotifydState = "not_authenticated";
+			} else if (spotifydStatus.running) {
+				this.spotifydState = "running";
+			} else {
+				this.spotifydState = "stopped";
+			}
+		}
+
+		// Determine MPRIS granular state (unless manually set during operations)
+		if (
+			this.mprisState !== "connecting" &&
+			this.mprisState !== "reconnecting"
+		) {
+			if (this.mpris?.isConnected()) {
+				this.mprisState = "connected";
+			} else {
+				this.mprisState = "disconnected";
+			}
+		}
+
 		const connectionStatus: ConnectionStatus = {
 			spotifydInstalled: spotifydStatus.installed,
 			spotifydRunning: spotifydStatus.running,
 			spotifydAuthenticated: spotifydStatus.authenticated,
+			spotifydState: this.spotifydState,
 			mprisConnected: this.mpris?.isConnected() ?? false,
+			mprisState: this.mprisState,
 			mprisBackend: useNative ? "native" : "typescript",
 		};
 
@@ -717,8 +902,21 @@ export class App {
 	 * Load saved tracks
 	 */
 	private async loadSavedTracks(): Promise<void> {
+		const configService = getConfigService();
 		const persistentCache = getPersistentCache();
 		const cacheKey = PersistentCacheKeys.savedTracks();
+
+		// Check if we have valid credentials before loading cache
+		if (!configService.hasCredentials()) {
+			logger.info("No credentials found - skipping saved tracks load");
+			this.contentWindow.setStatus(
+				"Not logged in - Press Ctrl+P → 'Login to Spotify'",
+			);
+
+			// Clear any stale cache
+			persistentCache.clearAll();
+			return;
+		}
 
 		// Try to load from disk cache first (instant startup!)
 		const cachedTracks = persistentCache.get<SpotifyTrack[]>(cacheKey);
@@ -730,7 +928,9 @@ export class App {
 			this.contentWindow.updateTracks(cachedTracks, "Liked Songs");
 			this.viewStack = ["songs"];
 
-			logger.info(`Loaded ${cachedTracks.length} tracks from cache (${ageMinutes}m old)`);
+			logger.info(
+				`Loaded ${cachedTracks.length} tracks from cache (${ageMinutes}m old)`,
+			);
 
 			// Refresh in background if cache is older than 5 minutes
 			if (!age || age > 5 * 60 * 1000) {

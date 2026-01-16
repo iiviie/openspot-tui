@@ -12,13 +12,39 @@ export interface QueueItem {
 }
 
 /**
+ * Granular spotifyd daemon states
+ */
+export type SpotifydState =
+	| "not_installed"
+	| "not_authenticated"
+	| "stopped"
+	| "starting"
+	| "running"
+	| "stopping"
+	| "authenticating"
+	| "error";
+
+/**
+ * Granular MPRIS connection states
+ */
+export type MprisState =
+	| "disconnected"
+	| "connecting"
+	| "connected"
+	| "reconnecting"
+	| "error";
+
+/**
  * Connection status for display
  */
 export interface ConnectionStatus {
 	spotifydInstalled: boolean;
 	spotifydRunning: boolean;
 	spotifydAuthenticated: boolean;
+	spotifydState?: SpotifydState; // Granular state
+	spotifydError?: string; // Error message if state is "error"
 	mprisConnected: boolean;
+	mprisState?: MprisState; // Granular state
 	mprisBackend?: "native" | "typescript"; // Which MPRIS implementation is being used
 	lastAction?: string; // Last action performed (for feedback)
 	lastActionTime?: number; // Timestamp of last action
@@ -178,6 +204,29 @@ export class StatusSidebar {
 	}
 
 	private getSpotifydStatusText(): string {
+		// Use granular state if available
+		if (this.connectionStatus.spotifydState) {
+			switch (this.connectionStatus.spotifydState) {
+				case "not_installed":
+					return "spotifyd: Not installed";
+				case "not_authenticated":
+					return "spotifyd: Not authenticated";
+				case "stopped":
+					return "spotifyd: Stopped";
+				case "starting":
+					return "spotifyd: Starting...";
+				case "running":
+					return "spotifyd: Running";
+				case "stopping":
+					return "spotifyd: Stopping...";
+				case "authenticating":
+					return "spotifyd: Authenticating...";
+				case "error":
+					return `spotifyd: Error${this.connectionStatus.spotifydError ? ` - ${this.connectionStatus.spotifydError}` : ""}`;
+			}
+		}
+
+		// Fallback to legacy logic
 		if (!this.connectionStatus.spotifydInstalled) {
 			return "spotifyd: Not installed";
 		}
@@ -191,6 +240,26 @@ export class StatusSidebar {
 	}
 
 	private getSpotifydStatusColor(): string {
+		// Use granular state if available
+		if (this.connectionStatus.spotifydState) {
+			switch (this.connectionStatus.spotifydState) {
+				case "not_installed":
+				case "error":
+					return colors.error;
+				case "not_authenticated":
+					return colors.warning;
+				case "stopped":
+					return colors.textDim;
+				case "starting":
+				case "stopping":
+				case "authenticating":
+					return colors.accent; // Use accent for transient states
+				case "running":
+					return colors.success;
+			}
+		}
+
+		// Fallback to legacy logic
 		if (!this.connectionStatus.spotifydInstalled) {
 			return colors.error;
 		}
@@ -204,12 +273,45 @@ export class StatusSidebar {
 	}
 
 	private getMprisStatusText(): string {
+		// Use granular state if available
+		if (this.connectionStatus.mprisState) {
+			switch (this.connectionStatus.mprisState) {
+				case "disconnected":
+					return "MPRIS: Disconnected";
+				case "connecting":
+					return "MPRIS: Connecting...";
+				case "connected":
+					return "MPRIS: Connected";
+				case "reconnecting":
+					return "MPRIS: Reconnecting...";
+				case "error":
+					return "MPRIS: Error";
+			}
+		}
+
+		// Fallback to legacy logic
 		return this.connectionStatus.mprisConnected
 			? "MPRIS: Connected"
 			: "MPRIS: Disconnected";
 	}
 
 	private getMprisStatusColor(): string {
+		// Use granular state if available
+		if (this.connectionStatus.mprisState) {
+			switch (this.connectionStatus.mprisState) {
+				case "disconnected":
+					return colors.textDim;
+				case "connecting":
+				case "reconnecting":
+					return colors.accent; // Use accent for transient states
+				case "connected":
+					return colors.success;
+				case "error":
+					return colors.error;
+			}
+		}
+
+		// Fallback to legacy logic
 		return this.connectionStatus.mprisConnected
 			? colors.success
 			: colors.textDim;

@@ -8,4 +8,8 @@ export { SearchBar } from "./SearchBar";
 export { Sidebar } from "./Sidebar";
 export { StatusBar } from "./StatusBar";
 export { StatusSidebar } from "./StatusSidebar";
-export type { ConnectionStatus } from "./StatusSidebar";
+export type {
+	ConnectionStatus,
+	MprisState,
+	SpotifydState,
+} from "./StatusSidebar";

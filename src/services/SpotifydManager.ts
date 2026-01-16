@@ -309,13 +309,28 @@ export class SpotifydManager {
 					stderr += data.toString();
 				});
 
-				proc.on("close", (code) => {
+				proc.on("close", async (code) => {
 					if (code === 0) {
-						resolve({
-							success: true,
-							message: "Authentication successful!",
-							authUrl,
-						});
+						// Process exited successfully, but credentials might not be written yet
+						// Poll for credentials file to appear (fix for race condition)
+						onProgress?.("Waiting for credentials to save...");
+
+						const credentialsFound = await this.waitForCredentials(30000); // 30 second timeout
+
+						if (credentialsFound) {
+							resolve({
+								success: true,
+								message: "Authentication successful!",
+								authUrl,
+							});
+						} else {
+							resolve({
+								success: false,
+								message:
+									"Authentication completed but credentials not found. Try again.",
+								authUrl,
+							});
+						}
 					} else {
 						resolve({
 							success: false,
@@ -349,6 +364,27 @@ export class SpotifydManager {
 				});
 			}
 		});
+	}
+
+	/**
+	 * Wait for spotifyd credentials file to appear (polling)
+	 * Used after authentication to ensure credentials are written to disk
+	 * @param timeoutMs - Maximum time to wait in milliseconds
+	 * @returns true if credentials found, false if timeout
+	 */
+	private async waitForCredentials(timeoutMs: number): Promise<boolean> {
+		const startTime = Date.now();
+		const pollIntervalMs = 500; // Check every 500ms
+
+		while (Date.now() - startTime < timeoutMs) {
+			if (this.isAuthenticated()) {
+				return true;
+			}
+			// Wait before next poll
+			await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
+		}
+
+		return false; // Timeout
 	}
 
 	/**

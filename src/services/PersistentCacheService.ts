@@ -3,7 +3,14 @@
  * Saves cache to disk for instant startup (stale-while-revalidate pattern)
  */
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+	existsSync,
+	mkdirSync,
+	readFileSync,
+	readdirSync,
+	unlinkSync,
+	writeFileSync,
+} from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { getLogger } from "../utils";
@@ -112,10 +119,36 @@ export class PersistentCacheService {
 		const filePath = this.getCacheFilePath(key);
 		try {
 			if (existsSync(filePath)) {
-				require("node:fs").unlinkSync(filePath);
+				unlinkSync(filePath);
 			}
 		} catch (error) {
 			logger.warn(`Failed to delete cache for ${key}:`, error);
+		}
+	}
+
+	/**
+	 * Clear all cached data
+	 * Deletes all cache files from disk
+	 */
+	clearAll(): void {
+		try {
+			if (!existsSync(CACHE_DIR)) {
+				return;
+			}
+
+			const files = readdirSync(CACHE_DIR);
+			for (const file of files) {
+				const filePath = join(CACHE_DIR, file);
+				try {
+					unlinkSync(filePath);
+				} catch (error) {
+					logger.warn(`Failed to delete cache file ${file}:`, error);
+				}
+			}
+
+			logger.info("Cleared all persistent cache");
+		} catch (error) {
+			logger.error("Failed to clear persistent cache:", error);
 		}
 	}
 }
