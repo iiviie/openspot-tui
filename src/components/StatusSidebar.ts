@@ -1,6 +1,7 @@
 import { BoxRenderable, TextRenderable } from "@opentui/core";
 import { colors } from "../config/colors";
 import type { CliRenderer, CurrentTrack, LayoutDimensions } from "../types";
+import { typedBox, typedText, TypedBox, TypedText } from "../ui";
 
 /**
  * Queue item interface
@@ -55,8 +56,11 @@ export interface ConnectionStatus {
 /**
  * Status sidebar component (right side)
  * Shows playback status, volume, shuffle/repeat state, connection status, and queue
+ *
+ * ✅ Type-safe: Uses TypedBox/TypedText wrappers (no 'as any')
  */
 export class StatusSidebar {
+	// Raw renderables
 	private container: BoxRenderable;
 	private title: TextRenderable;
 	private playbackStatus: TextRenderable;
@@ -70,6 +74,22 @@ export class StatusSidebar {
 	private activityLabel: TextRenderable;
 	private queueTitle: TextRenderable;
 	private queueItems: TextRenderable[] = [];
+
+	// Typed wrappers (eliminates 'as any')
+	private typedContainer: TypedBox;
+	private typedTitle: TypedText;
+	private typedPlaybackStatus: TypedText;
+	private typedVolumeLabel: TypedText;
+	private typedShuffleLabel: TypedText;
+	private typedRepeatLabel: TypedText;
+	private typedConnectionTitle: TypedText;
+	private typedSpotifydStatusLabel: TypedText;
+	private typedMprisStatusLabel: TypedText;
+	private typedBackendLabel: TypedText;
+	private typedActivityLabel: TypedText;
+	private typedQueueTitle: TypedText;
+	private typedQueueItems: TypedText[] = [];
+
 	private queue: QueueItem[] = [];
 	private connectionStatus: ConnectionStatus = {
 		spotifydInstalled: false,
@@ -87,6 +107,7 @@ export class StatusSidebar {
 		private shuffle: boolean = false,
 		private repeat: string = "None",
 	) {
+		// Create renderables
 		this.container = this.createContainer();
 		this.title = this.createTitle();
 		this.playbackStatus = this.createPlaybackStatus();
@@ -100,6 +121,21 @@ export class StatusSidebar {
 		this.activityLabel = this.createActivityLabel();
 		this.queueTitle = this.createQueueTitle();
 		this.queueItems = this.createQueueItems();
+
+		// Wrap with type-safe wrappers
+		this.typedContainer = typedBox(this.container);
+		this.typedTitle = typedText(this.title);
+		this.typedPlaybackStatus = typedText(this.playbackStatus);
+		this.typedVolumeLabel = typedText(this.volumeLabel);
+		this.typedShuffleLabel = typedText(this.shuffleLabel);
+		this.typedRepeatLabel = typedText(this.repeatLabel);
+		this.typedConnectionTitle = typedText(this.connectionTitle);
+		this.typedSpotifydStatusLabel = typedText(this.spotifydStatusLabel);
+		this.typedMprisStatusLabel = typedText(this.mprisStatusLabel);
+		this.typedBackendLabel = typedText(this.backendLabel);
+		this.typedActivityLabel = typedText(this.activityLabel);
+		this.typedQueueTitle = typedText(this.queueTitle);
+		this.typedQueueItems = this.queueItems.map((item) => typedText(item));
 	}
 
 	private createContainer(): BoxRenderable {
@@ -441,7 +477,7 @@ export class StatusSidebar {
 	private updateQueueDisplay(): void {
 		const maxWidth = this.layout.rightSidebarWidth - 4;
 
-		for (let i = 0; i < this.queueItems.length; i++) {
+		for (let i = 0; i < this.typedQueueItems.length; i++) {
 			if (i < this.queue.length) {
 				const item = this.queue[i];
 				const num = `${i + 1}. `;
@@ -452,14 +488,18 @@ export class StatusSidebar {
 					content = `${content.substring(0, maxWidth - 1)}…`;
 				}
 
-				(this.queueItems[i] as any).content = content;
-				(this.queueItems[i] as any).fg =
-					i === 0 ? colors.accent : colors.textSecondary;
+				// ✅ Type-safe update (no 'as any')
+				this.typedQueueItems[i].update({
+					content,
+					fg: i === 0 ? colors.accent : colors.textSecondary,
+				});
 			} else if (i === 0 && this.queue.length === 0) {
-				(this.queueItems[i] as any).content = "(empty)";
-				(this.queueItems[i] as any).fg = colors.textDim;
+				this.typedQueueItems[i].update({
+					content: "(empty)",
+					fg: colors.textDim,
+				});
 			} else {
-				(this.queueItems[i] as any).content = "";
+				this.typedQueueItems[i].update({ content: "" });
 			}
 		}
 	}
@@ -478,27 +518,24 @@ export class StatusSidebar {
 		if (shuffle !== undefined) this.shuffle = shuffle;
 		if (repeat !== undefined) this.repeat = repeat;
 
-		// Update playback status
+		// ✅ Type-safe updates (no 'as any')
 		const playIcon = this.track?.isPlaying ? "Playing" : "Paused";
-		(this.playbackStatus as any).content = playIcon;
-		(this.playbackStatus as any).fg = this.track?.isPlaying
-			? colors.accent
-			: colors.textSecondary;
+		this.typedPlaybackStatus.update({
+			content: playIcon,
+			fg: this.track?.isPlaying ? colors.accent : colors.textSecondary,
+		});
 
-		// Update volume
-		(this.volumeLabel as any).content = `Vol: ${this.volume}%`;
+		this.typedVolumeLabel.update({ content: `Vol: ${this.volume}%` });
 
-		// Update shuffle
-		(this.shuffleLabel as any).content =
-			`Shuffle: ${this.shuffle ? "On" : "Off"}`;
-		(this.shuffleLabel as any).fg = this.shuffle
-			? colors.accent
-			: colors.textDim;
+		this.typedShuffleLabel.update({
+			content: `Shuffle: ${this.shuffle ? "On" : "Off"}`,
+			fg: this.shuffle ? colors.accent : colors.textDim,
+		});
 
-		// Update repeat
-		(this.repeatLabel as any).content = `Repeat: ${this.repeat}`;
-		(this.repeatLabel as any).fg =
-			this.repeat !== "None" ? colors.accent : colors.textDim;
+		this.typedRepeatLabel.update({
+			content: `Repeat: ${this.repeat}`,
+			fg: this.repeat !== "None" ? colors.accent : colors.textDim,
+		});
 	}
 
 	/**
@@ -507,23 +544,24 @@ export class StatusSidebar {
 	updateConnectionStatus(status: ConnectionStatus): void {
 		this.connectionStatus = status;
 
-		// Update spotifyd status
-		(this.spotifydStatusLabel as any).content = this.getSpotifydStatusText();
-		(this.spotifydStatusLabel as any).fg = this.getSpotifydStatusColor();
+		// ✅ Type-safe updates (no 'as any')
+		this.typedSpotifydStatusLabel.update({
+			content: this.getSpotifydStatusText(),
+			fg: this.getSpotifydStatusColor(),
+		});
 
-		// Update MPRIS status
-		(this.mprisStatusLabel as any).content = this.getMprisStatusText();
-		(this.mprisStatusLabel as any).fg = this.getMprisStatusColor();
+		this.typedMprisStatusLabel.update({
+			content: this.getMprisStatusText(),
+			fg: this.getMprisStatusColor(),
+		});
 
-		// Update backend label
-		(this.backendLabel as any).content = this.getBackendText();
+		this.typedBackendLabel.update({ content: this.getBackendText() });
 
-		// Update activity label
 		const activityText = this.getActivityText();
-		(this.activityLabel as any).content = activityText;
-		(this.activityLabel as any).fg = activityText
-			? colors.accent
-			: colors.textDim;
+		this.typedActivityLabel.update({
+			content: activityText,
+			fg: activityText ? colors.accent : colors.textDim,
+		});
 	}
 
 	/**
@@ -532,8 +570,10 @@ export class StatusSidebar {
 	setLastAction(action: string): void {
 		this.connectionStatus.lastAction = action;
 		this.connectionStatus.lastActionTime = Date.now();
-		(this.activityLabel as any).content = action;
-		(this.activityLabel as any).fg = colors.accent;
+		this.typedActivityLabel.update({
+			content: action,
+			fg: colors.accent,
+		});
 	}
 
 	/**
@@ -566,59 +606,76 @@ export class StatusSidebar {
 	updateLayout(layout: LayoutDimensions): void {
 		this.layout = layout;
 
-		// Update container
-		(this.container as any).width = layout.rightSidebarWidth;
-		(this.container as any).height = layout.rightSidebarHeight;
-		(this.container as any).left = layout.rightSidebarX;
-		(this.container as any).top = layout.rightSidebarY;
+		// ✅ Type-safe updates (no 'as any')
+		this.typedContainer.update({
+			width: layout.rightSidebarWidth,
+			height: layout.rightSidebarHeight,
+			left: layout.rightSidebarX,
+			top: layout.rightSidebarY,
+		});
 
-		// Update title
-		(this.title as any).left = layout.rightSidebarX + 2;
-		(this.title as any).top = layout.rightSidebarY + 1;
+		this.typedTitle.update({
+			left: layout.rightSidebarX + 2,
+			top: layout.rightSidebarY + 1,
+		});
 
-		// Update playback status
-		(this.playbackStatus as any).left = layout.rightSidebarX + 2;
-		(this.playbackStatus as any).top = layout.rightSidebarY + 3;
+		this.typedPlaybackStatus.update({
+			left: layout.rightSidebarX + 2,
+			top: layout.rightSidebarY + 3,
+		});
 
-		// Update volume label
-		(this.volumeLabel as any).left = layout.rightSidebarX + 2;
-		(this.volumeLabel as any).top = layout.rightSidebarY + 5;
+		this.typedVolumeLabel.update({
+			left: layout.rightSidebarX + 2,
+			top: layout.rightSidebarY + 5,
+		});
 
-		// Update shuffle label
-		(this.shuffleLabel as any).left = layout.rightSidebarX + 2;
-		(this.shuffleLabel as any).top = layout.rightSidebarY + 6;
+		this.typedShuffleLabel.update({
+			left: layout.rightSidebarX + 2,
+			top: layout.rightSidebarY + 6,
+		});
 
-		// Update repeat label
-		(this.repeatLabel as any).left = layout.rightSidebarX + 2;
-		(this.repeatLabel as any).top = layout.rightSidebarY + 7;
+		this.typedRepeatLabel.update({
+			left: layout.rightSidebarX + 2,
+			top: layout.rightSidebarY + 7,
+		});
 
-		// Update connection section
-		(this.connectionTitle as any).left = layout.rightSidebarX + 2;
-		(this.connectionTitle as any).top = layout.rightSidebarY + 9;
+		this.typedConnectionTitle.update({
+			left: layout.rightSidebarX + 2,
+			top: layout.rightSidebarY + 9,
+		});
 
-		(this.spotifydStatusLabel as any).left = layout.rightSidebarX + 2;
-		(this.spotifydStatusLabel as any).top = layout.rightSidebarY + 11;
+		this.typedSpotifydStatusLabel.update({
+			left: layout.rightSidebarX + 2,
+			top: layout.rightSidebarY + 11,
+		});
 
-		(this.mprisStatusLabel as any).left = layout.rightSidebarX + 2;
-		(this.mprisStatusLabel as any).top = layout.rightSidebarY + 12;
+		this.typedMprisStatusLabel.update({
+			left: layout.rightSidebarX + 2,
+			top: layout.rightSidebarY + 12,
+		});
 
-		// Update backend label
-		(this.backendLabel as any).left = layout.rightSidebarX + 2;
-		(this.backendLabel as any).top = layout.rightSidebarY + 13;
+		this.typedBackendLabel.update({
+			left: layout.rightSidebarX + 2,
+			top: layout.rightSidebarY + 13,
+		});
 
-		// Update activity label
-		(this.activityLabel as any).left = layout.rightSidebarX + 2;
-		(this.activityLabel as any).top = layout.rightSidebarY + 14;
+		this.typedActivityLabel.update({
+			left: layout.rightSidebarX + 2,
+			top: layout.rightSidebarY + 14,
+		});
 
-		// Update queue title
-		(this.queueTitle as any).left = layout.rightSidebarX + 2;
-		(this.queueTitle as any).top = layout.rightSidebarY + 16;
+		this.typedQueueTitle.update({
+			left: layout.rightSidebarX + 2,
+			top: layout.rightSidebarY + 16,
+		});
 
 		// Update queue items
 		const startY = layout.rightSidebarY + 17;
-		this.queueItems.forEach((item, index) => {
-			(item as any).left = layout.rightSidebarX + 2;
-			(item as any).top = startY + index;
+		this.typedQueueItems.forEach((item, index) => {
+			item.update({
+				left: layout.rightSidebarX + 2,
+				top: startY + index,
+			});
 		});
 
 		// Refresh queue display with new dimensions
