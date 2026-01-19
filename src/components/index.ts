@@ -20,3 +20,4 @@ export {
 	getToastManager,
 	resetToastManager,
 } from "./ToastManager";
+// WelcomeSection merged into Sidebar

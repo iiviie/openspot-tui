@@ -169,4 +169,5 @@ export function getPersistentCache(): PersistentCacheService {
 export const PersistentCacheKeys = {
 	savedTracks: () => "saved_tracks",
 	playlists: () => "playlists",
+	USER_PROFILE_DISPLAY_NAME: "user_profile_display_name",
 } as const;

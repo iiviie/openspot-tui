@@ -116,7 +116,7 @@ export function calculateLayout(): LayoutDimensions {
 	return {
 		termWidth,
 		termHeight,
-		// Left sidebar (Library)
+		// Left sidebar (Library with welcome section inside)
 		leftSidebarWidth: LEFT_SIDEBAR_WIDTH,
 		leftSidebarHeight: upperSectionHeight,
 		leftSidebarX: 0,

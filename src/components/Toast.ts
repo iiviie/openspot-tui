@@ -1,6 +1,11 @@
 import { BoxRenderable, TextRenderable } from "@opentui/core";
 import { colors } from "../config/colors";
-import type { CliRenderer } from "../types";
+import {
+	TOAST_MAX_WIDTH,
+	TOAST_MIN_WIDTH,
+	TOAST_WIDTH_PERCENT,
+} from "../config/constants";
+import type { CliRenderer, LayoutDimensions } from "../types";
 
 /**
  * Toast notification types
@@ -27,9 +32,10 @@ export interface ToastConfig {
 export class Toast {
 	private renderer: CliRenderer;
 	private config: ToastConfig;
+	private layout: LayoutDimensions;
 	private x: number;
 	private y: number;
-	private width: number = 45;
+	private width: number;
 	private height: number = 0;
 
 	private createdAt: number;
@@ -44,6 +50,7 @@ export class Toast {
 	constructor(
 		renderer: CliRenderer,
 		config: ToastConfig,
+		layout: LayoutDimensions,
 		x: number,
 		y: number,
 	) {
@@ -52,9 +59,13 @@ export class Toast {
 			dismissable: true,
 			...config,
 		};
+		this.layout = layout;
 		this.x = x;
 		this.y = y;
 		this.createdAt = Date.now();
+
+		// Calculate responsive width
+		this.width = this.calculateWidth();
 
 		// Calculate height before creating renderables
 		this.calculateHeight();
@@ -63,6 +74,16 @@ export class Toast {
 		this.container = this.createContainer();
 		this.titleLabel = this.createTitleLabel();
 		this.messageLabel = this.createMessageLabel();
+	}
+
+	/**
+	 * Calculate responsive toast width based on terminal size
+	 * Formula: clamp between MIN-MAX, using WIDTH_PERCENT of terminal width
+	 */
+	private calculateWidth(): number {
+		const termWidth = this.layout.termWidth;
+		const dynamic = Math.floor(termWidth * TOAST_WIDTH_PERCENT);
+		return Math.max(TOAST_MIN_WIDTH, Math.min(TOAST_MAX_WIDTH, dynamic));
 	}
 
 	/**
@@ -304,5 +325,42 @@ export class Toast {
 	 */
 	isAddedToRenderer(): boolean {
 		return this.addedToRenderer;
+	}
+
+	/**
+	 * Update layout (for terminal resize)
+	 * Recalculates width and height based on new terminal size
+	 */
+	updateLayout(layout: LayoutDimensions, x: number, y: number): void {
+		this.layout = layout;
+		this.x = x;
+		this.y = y;
+
+		// Recalculate width
+		const newWidth = this.calculateWidth();
+		if (newWidth !== this.width) {
+			this.width = newWidth;
+
+			// Recalculate height (text wrapping changes with width)
+			this.calculateHeight();
+
+			// Update container dimensions
+			(this.container as any).width = this.width;
+			(this.container as any).height = this.height;
+
+			// Rewrap message text
+			const messageLines = this.wrapText(this.config.message, this.width - 4);
+			(this.messageLabel as any).content = messageLines.join("\n");
+		}
+
+		// Update positions
+		this.updatePosition();
+	}
+
+	/**
+	 * Get toast width
+	 */
+	getWidth(): number {
+		return this.width;
 	}
 }

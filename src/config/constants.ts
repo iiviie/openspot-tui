@@ -18,6 +18,11 @@ export const NOW_PLAYING_HEIGHT = 5; // Now playing bar at bottom
 export const MIN_TERM_WIDTH = 100;
 export const MIN_TERM_HEIGHT = 24;
 
+// Toast responsive dimensions
+export const TOAST_MIN_WIDTH = 25;
+export const TOAST_MAX_WIDTH = 60;
+export const TOAST_WIDTH_PERCENT = 0.3; // 30% of terminal width
+
 // Legacy exports for compatibility
 export const SIDEBAR_WIDTH = LEFT_SIDEBAR_WIDTH;
 export const STATUS_BAR_HEIGHT = NOW_PLAYING_HEIGHT;

@@ -165,6 +165,9 @@ export class App {
 			// Check auth status and show prompts if needed
 			this.checkAuthStatusAndPrompt();
 
+			// Fetch and cache user profile if logged in
+			this.fetchAndCacheUserProfile();
+
 			// Auto-activate spotifyd as playback device (so user doesn't need Spotify open)
 			await this.activateSpotifydDevice();
 		} catch (error) {
@@ -392,8 +395,19 @@ export class App {
 	 * Create and setup all UI components
 	 */
 	private setupComponents(): void {
-		// Left sidebar - Library navigation
-		this.sidebar = new Sidebar(this.renderer, this.layout);
+		// Get username if logged in
+		const configService = getConfigService();
+		let username: string | null = null;
+		if (configService.hasCredentials()) {
+			const persistentCache = getPersistentCache();
+			username =
+				persistentCache.get<string>(
+					PersistentCacheKeys.USER_PROFILE_DISPLAY_NAME,
+				) || null;
+		}
+
+		// Left sidebar - Library navigation with username
+		this.sidebar = new Sidebar(this.renderer, this.layout, undefined, username);
 		this.sidebar.onSelect = (item) => this.handleLibrarySelect(item);
 
 		// Center top - Search bar
@@ -687,6 +701,9 @@ export class App {
 			// Reload library data
 			await this.loadSavedTracks();
 
+			// Fetch and cache user profile to update welcome message
+			await this.fetchAndCacheUserProfile();
+
 			// Update connection status to show logged in
 			this.updateConnectionStatus();
 		} catch (error) {
@@ -756,6 +773,9 @@ export class App {
 			// Clear UI state
 			this.contentWindow.updateTracks([], "");
 			this.viewStack = [];
+
+			// Update sidebar to show "Not logged in"
+			this.sidebar.updateUsername(null);
 
 			// Show success toast
 			this.toastManager.success("Logged Out", "Credentials cleared", 2000);
@@ -905,6 +925,38 @@ export class App {
 				);
 				this.render();
 			}, 2000);
+		}
+	}
+
+	/**
+	 * Fetch and cache user profile
+	 * Called on startup if credentials exist
+	 */
+	private async fetchAndCacheUserProfile(): Promise<void> {
+		const configService = getConfigService();
+
+		// Only fetch if we have credentials
+		if (!configService.hasCredentials()) {
+			return;
+		}
+
+		try {
+			const profile = await this.spotifyApi.getCurrentUser();
+			const displayName = profile.display_name || profile.id;
+
+			// Cache the display name
+			const persistentCache = getPersistentCache();
+			persistentCache.set(
+				PersistentCacheKeys.USER_PROFILE_DISPLAY_NAME,
+				displayName,
+			);
+
+			// Update sidebar
+			this.sidebar.updateUsername(displayName);
+		} catch (error) {
+			// Don't crash app if profile fetch fails
+			// User can still use the app, just won't see their name
+			logger.warn("Failed to fetch user profile:", error);
 		}
 	}
 

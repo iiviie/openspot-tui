@@ -1,3 +1,8 @@
+import {
+	TOAST_MAX_WIDTH,
+	TOAST_MIN_WIDTH,
+	TOAST_WIDTH_PERCENT,
+} from "../config/constants";
 import type { CliRenderer, LayoutDimensions } from "../types";
 import { Toast, type ToastConfig } from "./Toast";
 
@@ -33,7 +38,7 @@ export class ToastManager {
 
 		// Create toast
 		const { x, y } = this.calculatePosition(this.toasts.length);
-		const toast = new Toast(this.renderer, fullConfig, x, y);
+		const toast = new Toast(this.renderer, fullConfig, this.layout, x, y);
 
 		// Add to queue
 		this.toasts.push(toast);
@@ -126,10 +131,21 @@ export class ToastManager {
 
 	/**
 	 * Calculate position for a new toast (top-right corner)
+	 * Includes position clamping to ensure toast stays within bounds
 	 */
 	private calculatePosition(index: number): { x: number; y: number } {
-		const toastWidth = 45;
-		const x = this.layout.termWidth - toastWidth - this.toastMarginRight;
+		// Calculate responsive width (same formula as Toast)
+		const dynamic = Math.floor(this.layout.termWidth * TOAST_WIDTH_PERCENT);
+		const toastWidth = Math.max(
+			TOAST_MIN_WIDTH,
+			Math.min(TOAST_MAX_WIDTH, dynamic),
+		);
+
+		// Calculate X position with clamping to ensure it doesn't go off-screen
+		const x = Math.max(
+			0,
+			this.layout.termWidth - toastWidth - this.toastMarginRight,
+		);
 
 		// Calculate Y based on stacking
 		let y = this.toastMarginTop;
@@ -138,6 +154,9 @@ export class ToastManager {
 		for (let i = 0; i < index && i < this.toasts.length; i++) {
 			y += this.toasts[i].getHeight() + this.toastSpacing;
 		}
+
+		// Clamp Y to ensure toast doesn't go below terminal
+		y = Math.max(0, Math.min(y, this.layout.termHeight - 10));
 
 		return { x, y };
 	}
@@ -222,10 +241,24 @@ export class ToastManager {
 
 	/**
 	 * Update layout (for terminal resize)
+	 * Recalculates positions and widths for all toasts
 	 */
 	updateLayout(layout: LayoutDimensions): void {
 		this.layout = layout;
-		this.repositionToasts();
+
+		// Recalculate responsive width
+		const toastWidth = Math.min(
+			60,
+			Math.max(30, Math.floor(layout.termWidth * 0.35)),
+		);
+		const x = layout.termWidth - toastWidth - this.toastMarginRight;
+
+		// Update each toast with new layout and position
+		let currentY = this.toastMarginTop;
+		for (const toast of this.toasts) {
+			toast.updateLayout(layout, x, currentY);
+			currentY += toast.getHeight() + this.toastSpacing;
+		}
 	}
 
 	/**

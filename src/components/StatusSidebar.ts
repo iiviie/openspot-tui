@@ -68,8 +68,6 @@ export class StatusSidebar {
 	private mprisStatusLabel: TextRenderable;
 	private backendLabel: TextRenderable;
 	private activityLabel: TextRenderable;
-	private accountTitle: TextRenderable;
-	private accountStatusLabel: TextRenderable;
 	private queueTitle: TextRenderable;
 	private queueItems: TextRenderable[] = [];
 	private queue: QueueItem[] = [];
@@ -100,8 +98,6 @@ export class StatusSidebar {
 		this.mprisStatusLabel = this.createMprisStatusLabel();
 		this.backendLabel = this.createBackendLabel();
 		this.activityLabel = this.createActivityLabel();
-		this.accountTitle = this.createAccountTitle();
-		this.accountStatusLabel = this.createAccountStatusLabel();
 		this.queueTitle = this.createQueueTitle();
 		this.queueItems = this.createQueueItems();
 	}
@@ -363,42 +359,6 @@ export class StatusSidebar {
 		return lastAction;
 	}
 
-	private createAccountTitle(): TextRenderable {
-		return new TextRenderable(this.renderer, {
-			id: "account-title",
-			content: "ACCOUNT",
-			fg: colors.textDim,
-			position: "absolute",
-			left: this.layout.rightSidebarX + 2,
-			top: this.layout.rightSidebarY + 16,
-		});
-	}
-
-	private createAccountStatusLabel(): TextRenderable {
-		return new TextRenderable(this.renderer, {
-			id: "account-status",
-			content: this.getAccountStatusText(),
-			fg: this.getAccountStatusColor(),
-			position: "absolute",
-			left: this.layout.rightSidebarX + 2,
-			top: this.layout.rightSidebarY + 17,
-		});
-	}
-
-	private getAccountStatusText(): string {
-		if (this.connectionStatus.webApiLoggedIn) {
-			const username = this.connectionStatus.username || "User";
-			return `Logged in: ${username}`;
-		}
-		return "Not logged in";
-	}
-
-	private getAccountStatusColor(): string {
-		return this.connectionStatus.webApiLoggedIn
-			? colors.success
-			: colors.textDim;
-	}
-
 	private createQueueTitle(): TextRenderable {
 		return new TextRenderable(this.renderer, {
 			id: "queue-title",
@@ -412,8 +372,8 @@ export class StatusSidebar {
 
 	private createQueueItems(): TextRenderable[] {
 		// Calculate how many queue items can fit
-		const startY = this.layout.rightSidebarY + 18;
-		const availableHeight = this.layout.rightSidebarHeight - 20;
+		const startY = this.layout.rightSidebarY + 17;
+		const availableHeight = this.layout.rightSidebarHeight - 19;
 		const maxQueueDisplay = Math.max(0, availableHeight);
 
 		const items: TextRenderable[] = [];
@@ -564,10 +524,6 @@ export class StatusSidebar {
 		(this.activityLabel as any).fg = activityText
 			? colors.accent
 			: colors.textDim;
-
-		// Update account status
-		(this.accountStatusLabel as any).content = this.getAccountStatusText();
-		(this.accountStatusLabel as any).fg = this.getAccountStatusColor();
 	}
 
 	/**
@@ -595,8 +551,6 @@ export class StatusSidebar {
 		this.renderer.root.add(this.mprisStatusLabel);
 		this.renderer.root.add(this.backendLabel);
 		this.renderer.root.add(this.activityLabel);
-		this.renderer.root.add(this.accountTitle);
-		this.renderer.root.add(this.accountStatusLabel);
 		this.renderer.root.add(this.queueTitle);
 		for (const item of this.queueItems) {
 			this.renderer.root.add(item);
@@ -661,7 +615,7 @@ export class StatusSidebar {
 		(this.queueTitle as any).top = layout.rightSidebarY + 16;
 
 		// Update queue items
-		const startY = layout.rightSidebarY + 18;
+		const startY = layout.rightSidebarY + 17;
 		this.queueItems.forEach((item, index) => {
 			(item as any).left = layout.rightSidebarX + 2;
 			(item as any).top = startY + index;

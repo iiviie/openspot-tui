@@ -602,6 +602,17 @@ export class SpotifyApiService {
 	): Promise<{ tracks: SpotifyTrack[] }> {
 		return this.request(`/artists/${artistId}/top-tracks?market=${market}`);
 	}
+
+	// ─────────────────────────────────────────────────────────────
+	// User
+	// ─────────────────────────────────────────────────────────────
+
+	/**
+	 * Get current user's profile
+	 */
+	async getCurrentUser(): Promise<{ display_name: string; id: string }> {
+		return this.request<{ display_name: string; id: string }>("/me");
+	}
 }
 
 // Singleton instance

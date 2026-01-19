@@ -58,7 +58,8 @@ export interface AppState {
 }
 
 /**
- * Layout dimensions for 3-column design
+ * Layout dimensions for UI components
+ * ASCII diagram of layout:
  * +----------+---------------------------+----------+
  * |          |       SEARCH BAR          |          |
  * |          +---------------------------+          |
@@ -72,7 +73,7 @@ export interface AppState {
 export interface LayoutDimensions {
 	termWidth: number;
 	termHeight: number;
-	// Left sidebar (Library)
+	// Left sidebar (Library with welcome section inside)
 	leftSidebarWidth: number;
 	leftSidebarHeight: number;
 	leftSidebarX: number;

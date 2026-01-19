@@ -4,15 +4,18 @@ import { LIBRARY_MENU_ITEMS, UI_STRINGS } from "../config/constants";
 import type { CliRenderer, LayoutDimensions, MenuItem } from "../types";
 
 /**
- * Sidebar component displaying the library menu (left side)
+ * Sidebar component displaying welcome section + library menu (left side)
  */
 export class Sidebar {
 	private container: BoxRenderable;
+	private welcomeTitle: TextRenderable;
+	private usernameLabel: TextRenderable;
 	private title: TextRenderable;
 	private menuItems: TextRenderable[] = [];
 	private selectedIndex: number = 0;
 	private readonly items: MenuItem[];
 	private isFocused: boolean = false;
+	private username: string | null = null;
 
 	// Callback when menu item is selected
 	public onSelect: ((item: MenuItem) => void) | null = null;
@@ -21,9 +24,13 @@ export class Sidebar {
 		private renderer: CliRenderer,
 		private layout: LayoutDimensions,
 		items: MenuItem[] = LIBRARY_MENU_ITEMS,
+		username: string | null = null,
 	) {
 		this.items = items;
+		this.username = username;
 		this.container = this.createContainer();
+		this.welcomeTitle = this.createWelcomeTitle();
+		this.usernameLabel = this.createUsernameLabel();
 		this.title = this.createTitle();
 		this.menuItems = this.createMenuItems();
 	}
@@ -42,6 +49,41 @@ export class Sidebar {
 		});
 	}
 
+	private createWelcomeTitle(): TextRenderable {
+		return new TextRenderable(this.renderer, {
+			id: "welcome-title",
+			content: "WELCOME",
+			fg: colors.textDim,
+			position: "absolute",
+			left: this.layout.leftSidebarX + 2,
+			top: this.layout.leftSidebarY + 1,
+		});
+	}
+
+	private createUsernameLabel(): TextRenderable {
+		return new TextRenderable(this.renderer, {
+			id: "welcome-username",
+			content: this.getUsernameText(),
+			fg: this.username ? colors.textPrimary : colors.textDim,
+			position: "absolute",
+			left: this.layout.leftSidebarX + 2,
+			top: this.layout.leftSidebarY + 2,
+		});
+	}
+
+	private getUsernameText(): string {
+		if (!this.username) {
+			return "Not logged in";
+		}
+
+		const maxWidth = this.layout.leftSidebarWidth - 4;
+		if (this.username.length > maxWidth) {
+			return `${this.username.substring(0, maxWidth - 1)}…`;
+		}
+
+		return this.username;
+	}
+
 	private createTitle(): TextRenderable {
 		return new TextRenderable(this.renderer, {
 			id: "library-title",
@@ -49,7 +91,7 @@ export class Sidebar {
 			fg: colors.textDim,
 			position: "absolute",
 			left: this.layout.leftSidebarX + 2,
-			top: this.layout.leftSidebarY + 1,
+			top: this.layout.leftSidebarY + 4, // After welcome section (lines 1, 2, 3=blank)
 		});
 	}
 
@@ -62,13 +104,24 @@ export class Sidebar {
 				fg: isSelected ? colors.textPrimary : colors.textSecondary,
 				position: "absolute",
 				left: this.layout.leftSidebarX + 2,
-				top: this.layout.leftSidebarY + 3 + index,
+				top: this.layout.leftSidebarY + 6 + index, // After LIBRARY title
 			});
 		});
 	}
 
 	private formatMenuItem(label: string, isSelected: boolean): string {
 		return `${isSelected ? ">" : " "} ${label}`;
+	}
+
+	/**
+	 * Update username
+	 */
+	updateUsername(username: string | null): void {
+		this.username = username;
+		(this.usernameLabel as any).content = this.getUsernameText();
+		(this.usernameLabel as any).fg = this.username
+			? colors.textPrimary
+			: colors.textDim;
 	}
 
 	/**
@@ -146,6 +199,8 @@ export class Sidebar {
 	 */
 	render(): void {
 		this.renderer.root.add(this.container);
+		this.renderer.root.add(this.welcomeTitle);
+		this.renderer.root.add(this.usernameLabel);
 		this.renderer.root.add(this.title);
 		for (const item of this.menuItems) {
 			this.renderer.root.add(item);
@@ -153,7 +208,7 @@ export class Sidebar {
 	}
 
 	/**
-	 * Update layout dimensions (for terminal resize)
+	 * Update layout (for terminal resize)
 	 */
 	updateLayout(layout: LayoutDimensions): void {
 		this.layout = layout;
@@ -164,21 +219,28 @@ export class Sidebar {
 		(this.container as any).left = layout.leftSidebarX;
 		(this.container as any).top = layout.leftSidebarY;
 
-		// Update title
+		// Update welcome section
+		(this.welcomeTitle as any).left = layout.leftSidebarX + 2;
+		(this.welcomeTitle as any).top = layout.leftSidebarY + 1;
+		(this.usernameLabel as any).left = layout.leftSidebarX + 2;
+		(this.usernameLabel as any).top = layout.leftSidebarY + 2;
+		(this.usernameLabel as any).content = this.getUsernameText();
+
+		// Update library title
 		(this.title as any).left = layout.leftSidebarX + 2;
-		(this.title as any).top = layout.leftSidebarY + 1;
+		(this.title as any).top = layout.leftSidebarY + 4;
 
 		// Update menu items
 		this.menuItems.forEach((item, index) => {
 			(item as any).left = layout.leftSidebarX + 2;
-			(item as any).top = layout.leftSidebarY + 3 + index;
+			(item as any).top = layout.leftSidebarY + 6 + index;
 		});
 	}
 
 	/**
-	 * Cleanup resources
+	 * Cleanup (no-op for now)
 	 */
 	destroy(): void {
-		// Remove from renderer if needed
+		// No cleanup needed
 	}
 }
