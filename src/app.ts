@@ -495,12 +495,39 @@ export class App {
 			},
 			{
 				id: "spotifyd-stop",
-				label: "Stop Spotifyd",
+				label: "Stop Spotifyd Daemon",
 				category: "Spotifyd",
-				action: () => {
-					this.spotifydManager.stop();
+				action: async () => {
+					// Pause music first
+					if (this.state.isPlaying) {
+						await this.mpris?.pause();
+					}
+					// Force kill spotifyd
+					this.spotifydManager.stop(true);
 					this.updateConnectionStatus();
-					this.contentWindow.setStatus("Spotifyd stopped");
+					this.toastManager.info(
+						"Spotifyd Stopped",
+						"Daemon has been stopped",
+						3000,
+					);
+				},
+			},
+			{
+				id: "spotifyd-restart",
+				label: "Restart Spotifyd Daemon",
+				category: "Spotifyd",
+				action: async () => {
+					this.contentWindow.setStatus("Restarting spotifyd...");
+					// Pause music first
+					if (this.state.isPlaying) {
+						await this.mpris?.pause();
+					}
+					// Stop and restart
+					this.spotifydManager.stop(true);
+					await new Promise((resolve) => setTimeout(resolve, 1000));
+					const result = await this.spotifydManager.start();
+					this.updateConnectionStatus();
+					this.toastManager.info("Spotifyd Restarted", result.message, 3000);
 				},
 			},
 			{
@@ -1566,13 +1593,37 @@ export class App {
 	 * Setup process signal handlers for graceful shutdown
 	 */
 	private setupSignalHandlers(): void {
-		// Use once() to prevent multiple handlers
-		process.once("SIGINT", () => {
-			this.exit();
+		const gracefulExit = () => this.exit();
+
+		// Handle all termination signals
+		process.once("SIGINT", gracefulExit); // Ctrl+C
+		process.once("SIGTERM", gracefulExit); // kill command
+		process.once("SIGHUP", gracefulExit); // Terminal closed
+
+		// Handle crashes - try to pause music, but don't block
+		process.once("uncaughtException", (err) => {
+			logger.error("Uncaught exception:", err);
+			// Try to pause, but don't wait - fire and forget
+			if (this.state.isPlaying && this.mpris) {
+				this.mpris.pause().catch(() => {});
+			}
+			this.cleanup();
+			cleanupTerminal();
+			process.exit(1);
 		});
-		process.once("SIGTERM", () => {
-			this.exit();
+
+		process.once("unhandledRejection", (reason) => {
+			logger.error("Unhandled rejection:", reason);
+			// Try to pause, but don't wait - fire and forget
+			if (this.state.isPlaying && this.mpris) {
+				this.mpris.pause().catch(() => {});
+			}
+			this.cleanup();
+			cleanupTerminal();
+			process.exit(1);
 		});
+
+		// Final synchronous cleanup on process exit
 		process.once("exit", () => {
 			cleanupTerminal();
 		});
@@ -1601,30 +1652,33 @@ export class App {
 	 * Gracefully exit the application
 	 */
 	private exit(): void {
-		// Pause playback first (give it a moment to send the command)
-		if (this.state.isPlaying && this.mpris) {
-			this.mpris
-				.pause()
-				.catch(() => {})
-				.finally(() => {
-					this.performExit();
-				});
+		// Prevent double-exit
+		if ((this as any)._exiting) return;
+		(this as any)._exiting = true;
 
-			// Fallback: exit after 200ms even if pause doesn't complete
-			setTimeout(() => this.performExit(), 200);
+		// CRITICAL: Pause music before exiting (user's primary expectation)
+		if (this.state.isPlaying && this.mpris) {
+			// Race between pause command and timeout (500ms max)
+			Promise.race([
+				this.mpris.pause(),
+				new Promise((resolve) => setTimeout(resolve, 500)),
+			])
+				.catch(() => {
+					// Pause failed, continue anyway
+				})
+				.finally(() => {
+					this.performExitCleanup();
+				});
 		} else {
-			this.performExit();
+			// Not playing, exit immediately
+			this.performExitCleanup();
 		}
 	}
 
 	/**
-	 * Perform the actual exit after cleanup
+	 * Perform the actual exit cleanup and termination
 	 */
-	private performExit(): void {
-		// Prevent multiple exits
-		if ((this as any)._exiting) return;
-		(this as any)._exiting = true;
-
+	private performExitCleanup(): void {
 		this.cleanup();
 		cleanupTerminal();
 
@@ -1651,16 +1705,9 @@ export class App {
 			logger.warn("MPRIS disconnect failed:", e);
 		}
 
-		// Stop spotifyd - force kill immediately for quick exit
-		try {
-			if (this.spotifydManager?.isManagedByUs()) {
-				this.spotifydManager.stop(true); // Force kill immediately
-			} else {
-				this.spotifydManager?.stop();
-			}
-		} catch (e) {
-			logger.warn("Spotifyd stop failed:", e);
-		}
+		// NOTE: We do NOT stop spotifyd here to allow instant restarts
+		// spotifyd daemon persists between TUI sessions
+		// User can explicitly stop via Ctrl+P → "Stop Spotifyd Daemon"
 
 		// Shutdown cache service (clears intervals)
 		try {

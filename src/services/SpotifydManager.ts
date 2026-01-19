@@ -152,6 +152,139 @@ export class SpotifydManager {
 	}
 
 	/**
+	 * Get all spotifyd PIDs (may include zombies)
+	 */
+	private getSpotifydPids(): number[] {
+		try {
+			const result = spawnSync("pgrep", ["-x", "spotifyd"], {
+				encoding: "utf-8",
+				timeout: 5000,
+			});
+			if (result.status === 0) {
+				return result.stdout
+					.trim()
+					.split("\n")
+					.filter(Boolean)
+					.map((pid) => parseInt(pid, 10))
+					.filter((pid) => !Number.isNaN(pid));
+			}
+		} catch {
+			// Ignore
+		}
+		return [];
+	}
+
+	/**
+	 * Check if a process is a zombie
+	 * @param pid Process ID to check
+	 * @returns true if zombie, false if alive
+	 */
+	private isZombie(pid: number): boolean {
+		try {
+			const stat = readFileSync(`/proc/${pid}/stat`, "utf-8");
+			// Format: pid (comm) state ...
+			// State 'Z' = zombie
+			const match = stat.match(/^\d+ \([^)]+\) (\w)/);
+			return match?.[1] === "Z";
+		} catch {
+			// Can't read process state = treat as dead
+			return true;
+		}
+	}
+
+	/**
+	 * Check if spotifyd is running and alive (not a zombie)
+	 */
+	private isRunningAndAlive(): boolean {
+		const pids = this.getSpotifydPids();
+		return pids.some((pid) => !this.isZombie(pid));
+	}
+
+	/**
+	 * Check if spotifyd D-Bus interface is registered
+	 */
+	private hasDbusInterface(): boolean {
+		try {
+			const result = spawnSync(
+				"dbus-send",
+				[
+					"--session",
+					"--dest=org.freedesktop.DBus",
+					"--type=method_call",
+					"--print-reply",
+					"/org/freedesktop/DBus",
+					"org.freedesktop.DBus.ListNames",
+				],
+				{ encoding: "utf-8", timeout: 2000 },
+			);
+
+			if (result.status !== 0) return false;
+
+			// Check for MPRIS or control interface
+			return (
+				result.stdout?.includes("spotifyd") ||
+				result.stdout?.includes("rs.spotifyd")
+			);
+		} catch {
+			return false;
+		}
+	}
+
+	/**
+	 * Check if spotifyd is healthy and functional
+	 * @returns true if running, alive, and D-Bus interface registered
+	 */
+	async isHealthy(): Promise<boolean> {
+		// 1. Check process exists and is not a zombie
+		if (!this.isRunningAndAlive()) {
+			return false;
+		}
+
+		// 2. Check D-Bus interface is registered
+		if (!this.hasDbusInterface()) {
+			return false;
+		}
+
+		return true;
+	}
+
+	/**
+	 * Clean up zombie spotifyd processes
+	 */
+	private cleanupZombies(): void {
+		const pids = this.getSpotifydPids();
+		for (const pid of pids) {
+			if (this.isZombie(pid)) {
+				logger.warn(`Found zombie spotifyd process (PID ${pid})`);
+				this.tryReapZombie(pid);
+			}
+		}
+	}
+
+	/**
+	 * Try to reap a zombie process by killing its parent
+	 */
+	private tryReapZombie(zombiePid: number): void {
+		try {
+			// Read parent PID from /proc/[pid]/stat
+			const stat = readFileSync(`/proc/${zombiePid}/stat`, "utf-8");
+			const parts = stat.split(" ");
+			const ppid = parseInt(parts[3], 10); // 4th field is PPID
+
+			// Only kill if parent is also a bun/node process (our old instance)
+			const parentComm = readFileSync(`/proc/${ppid}/comm`, "utf-8").trim();
+			if (parentComm === "bun" || parentComm === "node") {
+				logger.info(
+					`Killing orphan parent process ${ppid} (${parentComm}) to reap zombie`,
+				);
+				process.kill(ppid, "SIGKILL");
+			}
+		} catch {
+			// Parent might already be dead or we lack permissions
+		}
+	}
+
+	/**
 	 * Get the PID of running spotifyd process
 	 */
 	private getRunningPid(): number | undefined {
@@ -404,7 +537,19 @@ export class SpotifydManager {
 			};
 		}
 
-		// Check if already running
+		// Check if a healthy spotifyd is already running
+		if (await this.isHealthy()) {
+			logger.info("Reusing existing healthy spotifyd instance");
+			return {
+				success: true,
+				message: "Reusing existing spotifyd instance (instant start!)",
+			};
+		}
+
+		// Clean up any zombie processes before starting fresh
+		this.cleanupZombies();
+
+		// Check if still running after zombie cleanup (non-zombie instance)
 		if (this.isRunning()) {
 			return {
 				success: true,
@@ -428,6 +573,14 @@ export class SpotifydManager {
 			};
 		}
 
+		// Start fresh spotifyd instance
+		return this.startFresh();
+	}
+
+	/**
+	 * Start a fresh spotifyd instance (internal method)
+	 */
+	private startFresh(): Promise<{ success: boolean; message: string }> {
 		// Spawn spotifyd
 		return new Promise((resolve) => {
 			try {
