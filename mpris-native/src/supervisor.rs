@@ -136,6 +136,8 @@ pub struct SupervisorInner {
     status_tx: watch::Sender<SpotifydStatus>,
     /// Configuration
     config: SpotifydConfig,
+    /// Lock to prevent concurrent start_or_adopt calls
+    start_lock: tokio::sync::Mutex<()>,
 }
 
 impl SupervisorInner {
@@ -147,6 +149,7 @@ impl SupervisorInner {
             adopted_pid: RwLock::new(None),
             status_tx,
             config,
+            start_lock: tokio::sync::Mutex::new(()),
         }
     }
 
@@ -351,32 +354,83 @@ impl SupervisorInner {
             args.push(device_name.clone());
         }
 
-        // We need to use std::process::Command for pre_exec
         let binary_path_clone = binary_path.clone();
         let args_clone = args.clone();
 
-        // Spawn in a blocking task since pre_exec requires std::process::Command
+        // Spawn in a blocking task using double-fork to properly daemonize
+        // This prevents zombie processes by making init (PID 1) the parent
         let child_pid = tokio::task::spawn_blocking(move || {
-            let mut cmd = std::process::Command::new(&binary_path_clone);
-            cmd.args(&args_clone);
-
-            // Detach completely: null stdio, new session
-            cmd.stdin(Stdio::null())
-                .stdout(Stdio::null())
-                .stderr(Stdio::null());
-
-            // Create new session so process survives parent death
-            unsafe {
-                cmd.pre_exec(|| {
-                    // Create new session (detach from controlling terminal)
-                    libc::setsid();
-                    Ok(())
-                });
+            // First fork
+            let pid = unsafe { libc::fork() };
+            
+            if pid < 0 {
+                return Err(MprisError::ProcessSpawn("Fork failed".to_string()));
             }
-
-            match cmd.spawn() {
-                Ok(child) => Ok(child.id()),
-                Err(e) => Err(MprisError::ProcessSpawn(e.to_string())),
+            
+            if pid > 0 {
+                // Parent process - wait for first child to exit immediately
+                let mut status: libc::c_int = 0;
+                unsafe { libc::waitpid(pid, &mut status, 0) };
+                
+                // Read the grandchild PID from the status
+                // The first child will have written it to a temp file
+                let pid_file = format!("/tmp/spotifyd-{}.pid", pid);
+                let grandchild_pid = std::fs::read_to_string(&pid_file)
+                    .ok()
+                    .and_then(|s| s.trim().parse::<u32>().ok());
+                let _ = std::fs::remove_file(&pid_file);
+                
+                return grandchild_pid.ok_or_else(|| MprisError::ProcessSpawn("Failed to get grandchild PID".to_string()));
+            }
+            
+            // First child - will exit immediately after forking grandchild
+            // Create new session
+            unsafe { libc::setsid() };
+            
+            // Second fork
+            let pid2 = unsafe { libc::fork() };
+            
+            if pid2 < 0 {
+                std::process::exit(1);
+            }
+            
+            if pid2 > 0 {
+                // First child - write grandchild PID and exit
+                let pid_file = format!("/tmp/spotifyd-{}.pid", std::process::id());
+                let _ = std::fs::write(&pid_file, format!("{}", pid2));
+                std::process::exit(0);
+            }
+            
+            // Grandchild - this becomes the actual spotifyd process
+            // Close all file descriptors and redirect to /dev/null
+            unsafe {
+                // Redirect stdin, stdout, stderr to /dev/null
+                let dev_null = libc::open(b"/dev/null\0".as_ptr() as *const i8, libc::O_RDWR);
+                if dev_null >= 0 {
+                    libc::dup2(dev_null, libc::STDIN_FILENO);
+                    libc::dup2(dev_null, libc::STDOUT_FILENO);
+                    libc::dup2(dev_null, libc::STDERR_FILENO);
+                    if dev_null > libc::STDERR_FILENO {
+                        libc::close(dev_null);
+                    }
+                }
+            }
+            
+            // Convert args to CStrings
+            let c_binary = std::ffi::CString::new(binary_path_clone.as_str()).unwrap();
+            let c_args: Vec<std::ffi::CString> = std::iter::once(c_binary.clone())
+                .chain(args_clone.iter().map(|s| std::ffi::CString::new(s.as_str()).unwrap()))
+                .collect();
+            let c_argv: Vec<*const i8> = c_args.iter()
+                .map(|s| s.as_ptr())
+                .chain(std::iter::once(std::ptr::null()))
+                .collect();
+            
+            // Exec spotifyd
+            unsafe {
+                libc::execvp(c_binary.as_ptr(), c_argv.as_ptr());
+                // If exec returns, it failed
+                libc::_exit(1);
             }
         })
         .await
@@ -384,7 +438,7 @@ impl SupervisorInner {
 
         info!("spotifyd spawned with PID {}", child_pid);
 
-        // Store the PID (not the Child handle, since we detached)
+        // Store the PID
         *self.spawned_child_pid.write().await = Some(child_pid);
         *self.adopted_pid.write().await = None;
 
@@ -420,9 +474,28 @@ impl SupervisorInner {
     /// Start spotifyd or adopt existing instance
     #[instrument(skip(self))]
     pub async fn start_or_adopt(&self) -> Result<SpotifydStartResult, MprisError> {
+        // Acquire lock to prevent concurrent calls
+        let _guard = self.start_lock.lock().await;
+        
         info!("Starting or adopting spotifyd");
 
-        // Check for existing spotifyd
+        // First, check if we already have a healthy tracked process
+        if let Some(pid) = self.get_tracked_pid().await {
+            if is_pid_alive(pid) && self.check_dbus_responsive().await {
+                info!("Already tracking healthy spotifyd with PID {}", pid);
+                return Ok(SpotifydStartResult {
+                    success: true,
+                    message: "Spotifyd already running".to_string(),
+                    pid: Some(pid),
+                    adopted: true,
+                });
+            }
+            // Our tracked process is dead or unhealthy, clear it
+            *self.spawned_child_pid.write().await = None;
+            *self.adopted_pid.write().await = None;
+        }
+
+        // Check for existing spotifyd (not tracked by us)
         if let Some(pid) = self.find_existing_spotifyd().await {
             info!("Found existing spotifyd with PID {}", pid);
 
@@ -446,6 +519,17 @@ impl SupervisorInner {
         let killed = kill_all_spotifyd().await;
         if killed > 0 {
             info!("Killed {} existing spotifyd process(es)", killed);
+        }
+        
+        // Double-check no spotifyd processes remain (paranoid verification)
+        let remaining = find_all_spotifyd_pids().await;
+        if !remaining.is_empty() {
+            warn!("Spotifyd processes still running after kill: {:?}", remaining);
+            // Try killing them again more aggressively
+            for pid in remaining {
+                kill_pid(pid).await;
+            }
+            tokio::time::sleep(Duration::from_millis(500)).await;
         }
 
         // Start fresh

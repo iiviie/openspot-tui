@@ -22,5 +22,5 @@ export interface IAppLifecycle {
 	/**
 	 * Cleanup resources
 	 */
-	cleanup(): void;
+	cleanup(): Promise<void>;
 }

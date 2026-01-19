@@ -12,9 +12,9 @@ use napi_derive::napi;
 use once_cell::sync::Lazy;
 use std::sync::Arc;
 use supervisor::SupervisorInner;
-use std::fs::OpenOptions;
 use tokio::runtime::Runtime;
-use tracing_subscriber::{fmt, EnvFilter};
+use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
+use tracing_appender::rolling::{RollingFileAppender, Rotation};
 use types::{PlaybackState, RepeatMode, SpotifydConfig, SpotifydStartResult, SpotifydStatus};
 
 // Re-export types for TypeScript
@@ -38,29 +38,29 @@ static INIT_TRACING: Lazy<()> = Lazy::new(|| {
 
     let _ = std::fs::create_dir_all(&log_dir);
 
-    // Create log file with timestamp
-    let log_file = log_dir.join("mpris-native.log");
+    // Create rolling file appender (rotates daily, keeps 5 files)
+    let file_appender = RollingFileAppender::builder()
+        .rotation(Rotation::DAILY) // Rotate daily
+        .filename_prefix("mpris-native") // File prefix
+        .filename_suffix("log") // File extension
+        .max_log_files(5) // Keep max 5 files
+        .build(&log_dir)
+        .expect("Failed to create log appender");
 
-    // Open log file (truncate on each run for simplicity)
-    if let Ok(file) = OpenOptions::new()
-        .create(true)
-        .write(true)
-        .truncate(true)
-        .open(&log_file)
-    {
-        fmt()
-            .with_env_filter(
-                EnvFilter::try_from_default_env()
-                    .unwrap_or_else(|_| EnvFilter::new("info")),
-            )
-            .with_writer(move || file.try_clone().unwrap())
-            .init();
-    } else {
-        // Fallback to no logging if file can't be opened
-        fmt()
-            .with_env_filter(EnvFilter::new("off"))
-            .init();
-    }
+    // Use non_blocking writer for better performance
+    let (non_blocking, _guard) = tracing_appender::non_blocking(file_appender);
+
+    // Build subscriber with file writer
+    let env_filter = EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| EnvFilter::new("info"));
+
+    tracing_subscriber::registry()
+        .with(env_filter)
+        .with(fmt::layer().with_writer(non_blocking))
+        .init();
+
+    // Intentionally leak _guard to keep the logger alive for the lifetime of the program
+    std::mem::forget(_guard);
 });
 
 #[napi]

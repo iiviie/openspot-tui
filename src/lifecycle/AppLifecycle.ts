@@ -10,6 +10,7 @@ import type {
 	StatusSidebar,
 } from "../components";
 import { calculateLayout, cleanupTerminal, getLogger } from "../utils";
+import { getLogWriter } from "../utils/LogWriter";
 import { shutdownCacheService } from "../services/CacheService";
 
 const logger = getLogger("AppLifecycle");
@@ -50,24 +51,24 @@ export class AppLifecycle implements IAppLifecycle {
 		process.once("SIGHUP", gracefulExit); // Terminal closed
 
 		// Handle crashes - try to pause music, but don't block
-		process.once("uncaughtException", (err) => {
+		process.once("uncaughtException", async (err) => {
 			logger.error("Uncaught exception:", err);
 			// Try to pause, but don't wait - fire and forget
 			if (this.getIsPlaying() && this.mpris) {
 				this.mpris.pause().catch(() => {});
 			}
-			this.cleanup();
+			await this.cleanup();
 			cleanupTerminal();
 			process.exit(1);
 		});
 
-		process.once("unhandledRejection", (reason) => {
+		process.once("unhandledRejection", async (reason) => {
 			logger.error("Unhandled rejection:", reason);
 			// Try to pause, but don't wait - fire and forget
 			if (this.getIsPlaying() && this.mpris) {
 				this.mpris.pause().catch(() => {});
 			}
-			this.cleanup();
+			await this.cleanup();
 			cleanupTerminal();
 			process.exit(1);
 		});
@@ -123,8 +124,8 @@ export class AppLifecycle implements IAppLifecycle {
 	/**
 	 * Perform the actual exit cleanup and termination
 	 */
-	private performExitCleanup(): void {
-		this.cleanup();
+	private async performExitCleanup(): Promise<void> {
+		await this.cleanup();
 		cleanupTerminal();
 
 		// Force exit immediately
@@ -134,7 +135,7 @@ export class AppLifecycle implements IAppLifecycle {
 	/**
 	 * Cleanup resources
 	 */
-	cleanup(): void {
+	async cleanup(): Promise<void> {
 		logger.debug("Cleaning up resources...");
 
 		// Stop update loop
@@ -191,6 +192,14 @@ export class AppLifecycle implements IAppLifecycle {
 			this.components.commandPalette?.destroy();
 		} catch (e) {
 			// Ignore errors during component cleanup
+		}
+
+		// Flush logs before shutdown (CRITICAL - ensure all logs are written)
+		try {
+			await getLogWriter().shutdown();
+		} catch (e) {
+			// Log writer shutdown failed, but continue cleanup
+			console.error("Failed to flush logs:", e);
 		}
 
 		logger.debug("Cleanup complete");

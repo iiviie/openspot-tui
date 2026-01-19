@@ -1,26 +1,30 @@
 /**
  * Logger Service
- * Centralized logging with levels, timestamps, and contexts
+ * Centralized logging with levels, timestamps, contexts, and file persistence
  */
 
-export enum LogLevel {
-	DEBUG = 0,
-	INFO = 1,
-	WARN = 2,
-	ERROR = 3,
-	NONE = 4,
-}
+import { getLogWriter, type LogWriter } from "./LogWriter";
+import { getLoggingConfig, LogLevel } from "../config/logging";
+
+export { LogLevel } from "../config/logging";
 
 export interface LoggerConfig {
 	level: LogLevel;
 	enableTimestamps: boolean;
 	enableColors: boolean;
+	enableFileLogging: boolean;
+	enableConsoleLogging: boolean;
 }
 
+// Get config from centralized logging config
+const loggingConfig = getLoggingConfig();
+
 const DEFAULT_CONFIG: LoggerConfig = {
-	level: LogLevel.INFO,
+	level: loggingConfig.level,
 	enableTimestamps: true,
 	enableColors: true,
+	enableFileLogging: loggingConfig.fileLogging,
+	enableConsoleLogging: loggingConfig.consoleLogging,
 };
 
 /**
@@ -42,10 +46,20 @@ const colors = {
 export class Logger {
 	private config: LoggerConfig;
 	private context: string;
+	private logWriter: LogWriter | null = null;
 
 	constructor(context: string = "App", config: Partial<LoggerConfig> = {}) {
 		this.context = context;
 		this.config = { ...DEFAULT_CONFIG, ...config };
+
+		// Initialize file logging if enabled
+		if (this.config.enableFileLogging) {
+			try {
+				this.logWriter = getLogWriter();
+			} catch {
+				// Silent error - file logging is non-critical
+			}
+		}
 	}
 
 	/**
@@ -63,7 +77,7 @@ export class Logger {
 	}
 
 	/**
-	 * Format log message with timestamp and context
+	 * Format log message with timestamp and context (with colors for console)
 	 */
 	private format(
 		level: string,
@@ -103,9 +117,7 @@ export class Logger {
 		// Data
 		if (data !== undefined) {
 			const dataStr =
-				typeof data === "object"
-					? JSON.stringify(data, null, 2)
-					: String(data);
+				typeof data === "object" ? JSON.stringify(data, null, 2) : String(data);
 			if (this.config.enableColors) {
 				parts.push(`\n${colors.dim}${dataStr}${colors.reset}`);
 			} else {
@@ -117,57 +129,120 @@ export class Logger {
 	}
 
 	/**
+	 * Format log message with timestamp and context (without colors for file logging)
+	 */
+	private formatPlain(level: string, message: string, data?: unknown): string {
+		const parts: string[] = [];
+
+		// Full ISO timestamp for file logs
+		const timestamp = new Date().toISOString();
+		parts.push(timestamp);
+
+		// Level
+		parts.push(`[${level}]`);
+
+		// Context
+		parts.push(`[${this.context}]`);
+
+		// Message
+		parts.push(message);
+
+		// Data
+		if (data !== undefined) {
+			const dataStr =
+				typeof data === "object" ? JSON.stringify(data) : String(data);
+			parts.push(dataStr);
+		}
+
+		return parts.join(" ");
+	}
+
+	/**
+	 * Log to both console and file
+	 */
+	private log(
+		level: LogLevel,
+		levelStr: string,
+		color: string,
+		message: string,
+		data?: unknown,
+	): void {
+		// Short-circuit if level is too low
+		if (this.config.level > level) return;
+
+		// Format for console (with colors)
+		const consoleMessage = this.format(levelStr, message, color, data);
+
+		// Write to console if enabled
+		if (this.config.enableConsoleLogging) {
+			const consoleMethod =
+				level === LogLevel.ERROR
+					? console.error
+					: level === LogLevel.WARN
+						? console.warn
+						: console.log;
+			consoleMethod(consoleMessage);
+		}
+
+		// Write to file if enabled (without colors)
+		if (this.config.enableFileLogging && this.logWriter) {
+			const plainMessage = this.formatPlain(levelStr, message, data);
+			this.logWriter.write(plainMessage);
+		}
+	}
+
+	/**
 	 * Debug log (lowest priority)
 	 */
 	debug(message: string, data?: unknown): void {
-		if (this.config.level <= LogLevel.DEBUG) {
-			console.log(this.format("DEBUG", message, colors.gray, data));
-		}
+		this.log(LogLevel.DEBUG, "DEBUG", colors.gray, message, data);
 	}
 
 	/**
 	 * Info log (normal priority)
 	 */
 	info(message: string, data?: unknown): void {
-		if (this.config.level <= LogLevel.INFO) {
-			console.log(this.format("INFO", message, colors.blue, data));
-		}
+		this.log(LogLevel.INFO, "INFO", colors.blue, message, data);
 	}
 
 	/**
 	 * Warning log (medium priority)
 	 */
 	warn(message: string, data?: unknown): void {
-		if (this.config.level <= LogLevel.WARN) {
-			console.warn(this.format("WARN", message, colors.yellow, data));
-		}
+		this.log(LogLevel.WARN, "WARN", colors.yellow, message, data);
 	}
 
 	/**
 	 * Error log (highest priority)
 	 */
 	error(message: string, error?: unknown): void {
-		if (this.config.level <= LogLevel.ERROR) {
-			let errorData: unknown = error;
+		let errorData: unknown = error;
 
-			// Extract useful info from Error objects
-			if (error instanceof Error) {
-				errorData = {
-					name: error.name,
-					message: error.message,
-					stack: error.stack,
-				};
-			}
-
-			console.error(this.format("ERROR", message, colors.red, errorData));
+		// Extract useful info from Error objects
+		if (error instanceof Error) {
+			errorData = {
+				name: error.name,
+				message: error.message,
+				stack: error.stack,
+			};
 		}
+
+		this.log(LogLevel.ERROR, "ERROR", colors.red, message, errorData);
 	}
 
 	/**
 	 * Always log (ignores log level)
 	 */
 	always(message: string, data?: unknown): void {
-		console.log(this.format("LOG", message, colors.reset, data));
+		// Always log to console
+		const formatted = this.format("LOG", message, colors.reset, data);
+		console.log(formatted);
+
+		// Also write to file
+		if (this.config.enableFileLogging && this.logWriter) {
+			const plainMessage = this.formatPlain("LOG", message, data);
+			this.logWriter.write(plainMessage);
+		}
 	}
 }
 
