@@ -16,6 +16,8 @@ import {
 	getSpotifydManager,
 	type SpotifyApiService,
 	type SpotifydManager,
+	getErrorHandler,
+	type ErrorHandler,
 } from "./services";
 import { getConfigService } from "./services/ConfigService";
 import {
@@ -43,6 +45,7 @@ import {
 } from "./controllers";
 import { AppLifecycle } from "./lifecycle";
 import { buildCommands, type CommandCallbacks } from "./commands";
+import { StateManager, getStateManager } from "./state";
 
 const logger = getLogger("App");
 
@@ -87,6 +90,12 @@ export class App {
 	private inputHandler!: InputHandler;
 	private lifecycle!: AppLifecycle;
 
+	// State Management
+	private stateManager!: StateManager;
+
+	// Error Handling
+	private errorHandler!: ErrorHandler;
+
 	// Application state (will be moved to StateManager in Phase 4)
 	private state: AppState = {
 		selectedMenuIndex: 0,
@@ -105,22 +114,23 @@ export class App {
 		selectedSidebarIndex: 0,
 	};
 
-	// Status state (shared with controllers)
-	private volume: number = 100;
-	private shuffle: boolean = false;
-	private repeat: string = "None";
-
 	/**
 	 * Initialize and start the application
 	 */
 	async start(): Promise<void> {
 		try {
+			// Initialize state management
+			this.stateManager = getStateManager(this.state);
+
 			// Initialize core services
 			await this.initializeServices();
 			await this.initialize();
 
 			// Setup UI components
 			this.setupComponents();
+
+			// Initialize error handler (after toastManager is created)
+			this.errorHandler = getErrorHandler(this.toastManager);
 
 			// Setup controllers (orchestration layer)
 			this.setupControllers();
@@ -247,9 +257,9 @@ export class App {
 			this.renderer,
 			this.layout,
 			this.state.currentTrack,
-			this.volume,
-			this.shuffle,
-			this.repeat,
+			this.stateManager.getState().volume,
+			this.stateManager.getState().shuffle,
+			this.stateManager.getState().repeat,
 		);
 
 		// Bottom bar - Now playing
@@ -274,37 +284,19 @@ export class App {
 		// MPRIS State Manager - handles polling and state updates
 		this.mprisStateManager = new MprisStateManager(
 			this.mpris,
-			this.state,
+			this.stateManager,
 			this.statusSidebar,
 			this.spotifyApi,
-			(volume) => {
-				this.volume = volume;
-			},
-			(shuffle) => {
-				this.shuffle = shuffle;
-			},
-			(repeat) => {
-				this.repeat = repeat;
-			},
 		);
 
 		// Playback Controller - handles all playback controls
 		this.playbackController = new PlaybackController(
 			this.mpris,
-			this.state,
+			this.stateManager,
 			this.mprisStateManager,
 			this.statusSidebar,
 			this.nowPlaying,
 			(action) => this.statusSidebar?.setLastAction(action),
-			(volume) => {
-				this.volume = volume;
-			},
-			(shuffle) => {
-				this.shuffle = shuffle;
-			},
-			(repeat) => {
-				this.repeat = repeat;
-			},
 		);
 
 		// Connection Manager - handles spotifyd and MPRIS connection
@@ -354,7 +346,7 @@ export class App {
 		this.lifecycle = new AppLifecycle(
 			this.renderer,
 			this.mpris,
-			() => this.state.isPlaying,
+			() => this.stateManager.getState().isPlaying,
 			{
 				sidebar: this.sidebar,
 				searchBar: this.searchBar,
@@ -496,12 +488,13 @@ export class App {
 			try {
 				await this.mprisStateManager.updateFromMpris();
 				// Re-render components with new data
-				this.nowPlaying.updateTrack(this.state.currentTrack);
+				const state = this.stateManager.getState();
+				this.nowPlaying.updateTrack(state.currentTrack);
 				this.statusSidebar.updateStatus(
-					this.state.currentTrack,
-					this.volume,
-					this.shuffle,
-					this.repeat,
+					state.currentTrack,
+					state.volume,
+					state.shuffle,
+					state.repeat,
 				);
 				// Update connection status to reflect current state
 				this.connectionManager.updateConnectionStatus();

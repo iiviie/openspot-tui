@@ -1,8 +1,9 @@
 import type { IMprisStateManager } from "../interfaces";
 import type { IMprisService, NowPlayingInfo } from "../types/mpris";
-import type { CurrentTrack, AppState } from "../types";
+import type { CurrentTrack } from "../types";
 import type { StatusSidebar } from "../components";
 import type { SpotifyApiService } from "../services";
+import type { StateManager } from "../state";
 import { TRACK_END_THRESHOLD_MS } from "../config";
 import { getLogger } from "../utils";
 
@@ -25,12 +26,9 @@ export class MprisStateManager implements IMprisStateManager {
 
 	constructor(
 		private mpris: IMprisService,
-		private state: AppState,
+		private stateManager: StateManager,
 		private statusSidebar: StatusSidebar | null,
 		private spotifyApi: SpotifyApiService,
-		private onVolumeUpdate: (volume: number) => void,
-		private onShuffleUpdate: (shuffle: boolean) => void,
-		private onRepeatUpdate: (repeat: string) => void,
 	) {}
 
 	/**
@@ -68,46 +66,52 @@ export class MprisStateManager implements IMprisStateManager {
 			const inShuffleCooldown = now <= this.shuffleCooldownUntil;
 			const inRepeatCooldown = now <= this.repeatCooldownUntil;
 
-			// Preserve the current isPlaying state if in cooldown
-			const preservedIsPlaying = this.state.isPlaying;
+			// Get current state
+			const state = this.stateManager.getState();
+			const preservedIsPlaying = state.isPlaying;
 
 			// Convert track data from MPRIS
-			this.state.currentTrack = this.convertToCurrentTrack(nowPlaying);
+			const currentTrack = this.convertToCurrentTrack(nowPlaying);
 
 			// Apply cooldown logic - use cached state if in cooldown
 			if (inPlayCooldown) {
 				// Preserve our optimistic state
-				this.state.isPlaying = preservedIsPlaying;
-				if (this.state.currentTrack) {
-					this.state.currentTrack.isPlaying = preservedIsPlaying;
-				}
+				const trackWithPreservedState = {
+					...currentTrack,
+					isPlaying: preservedIsPlaying,
+				};
+				this.stateManager.setCurrentTrack(trackWithPreservedState);
+				// Don't update isPlaying state (keep optimistic update)
 			} else {
 				// Use MPRIS state
-				this.state.isPlaying = nowPlaying.isPlaying;
-				if (this.state.currentTrack) {
-					this.state.currentTrack.isPlaying = nowPlaying.isPlaying;
-				}
+				const trackWithMprisState = {
+					...currentTrack,
+					isPlaying: nowPlaying.isPlaying,
+				};
+				this.stateManager.setCurrentTrack(trackWithMprisState);
+				this.stateManager.setIsPlaying(nowPlaying.isPlaying);
 			}
 
-			this.onVolumeUpdate(Math.round(nowPlaying.volume * 100));
+			// Update volume
+			this.stateManager.setVolume(Math.round(nowPlaying.volume * 100));
 
 			// Only update shuffle if not in cooldown
 			if (!inShuffleCooldown) {
-				this.onShuffleUpdate(nowPlaying.shuffle);
+				this.stateManager.setShuffle(nowPlaying.shuffle);
 			}
 
 			// Only update repeat if not in cooldown
 			if (!inRepeatCooldown) {
-				this.onRepeatUpdate(nowPlaying.loopStatus);
+				this.stateManager.setRepeat(nowPlaying.loopStatus);
 			}
 
 			// Handle track changes and queue playback
 			await this.handleTrackState(nowPlaying);
 		} else {
-			this.state.currentTrack = null;
+			this.stateManager.setCurrentTrack(null);
 			// Only update play state if not in cooldown
 			if (now > this.playStateCooldownUntil) {
-				this.state.isPlaying = false;
+				this.stateManager.setIsPlaying(false);
 			}
 		}
 	}
@@ -208,6 +212,6 @@ export class MprisStateManager implements IMprisStateManager {
 	 * Get current repeat mode
 	 */
 	private getRepeatMode(): string {
-		return this.state.repeat;
+		return this.stateManager.getState().repeat;
 	}
 }

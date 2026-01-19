@@ -44,3 +44,11 @@ export {
 } from "./SpotifydInstaller";
 export type { SpotifydConfig, SpotifydStatus } from "./SpotifydManager";
 export { getSpotifydManager, SpotifydManager } from "./SpotifydManager";
+export type { ErrorContext } from "./ErrorHandler";
+export {
+	ErrorHandler,
+	ErrorCategory,
+	ErrorSeverity,
+	getErrorHandler,
+	createErrorHandler,
+} from "./ErrorHandler";

@@ -1,8 +1,9 @@
 import type { IPlaybackController } from "../interfaces";
 import type { IMprisService, LoopStatus } from "../types/mpris";
-import type { AppState, CurrentTrack } from "../types";
+import type { CurrentTrack } from "../types";
 import type { StatusSidebar, NowPlaying } from "../components";
 import type { MprisStateManager } from "./MprisStateManager";
+import type { StateManager } from "../state";
 import { SEEK_STEP_MS } from "../config";
 import { getLogger } from "../utils";
 
@@ -21,14 +22,11 @@ export class PlaybackController implements IPlaybackController {
 
 	constructor(
 		private mpris: IMprisService,
-		private state: AppState,
+		private stateManager: StateManager,
 		private mprisStateManager: MprisStateManager,
 		private statusSidebar: StatusSidebar | null,
 		private nowPlaying: NowPlaying | null,
 		private onActionFeedback: (action: string) => void,
-		private onVolumeUpdate: (volume: number) => void,
-		private onShuffleUpdate: (shuffle: boolean) => void,
-		private onRepeatUpdate: (repeat: string) => void,
 	) {}
 
 	/**
@@ -42,23 +40,31 @@ export class PlaybackController implements IPlaybackController {
 		}
 		this.lastPlayPauseTime = now;
 
+		// Get current state
+		const state = this.stateManager.getState();
+
 		// OPTIMISTIC UPDATE: Update UI immediately BEFORE D-Bus call
-		this.state.isPlaying = !this.state.isPlaying;
-		if (this.state.currentTrack) {
-			this.state.currentTrack.isPlaying = this.state.isPlaying;
+		const newIsPlaying = !state.isPlaying;
+		this.stateManager.setIsPlaying(newIsPlaying);
+
+		// Update current track playing state
+		if (state.currentTrack) {
+			const updatedTrack = { ...state.currentTrack, isPlaying: newIsPlaying };
+			this.stateManager.setCurrentTrack(updatedTrack);
 		}
+
 		this.mprisStateManager.setPlayStateCooldown();
 		this.updateUI();
 
 		// Show action feedback
-		this.onActionFeedback(this.state.isPlaying ? "Playing" : "Paused");
+		this.onActionFeedback(newIsPlaying ? "Playing" : "Paused");
 
 		// Fire-and-forget: Send D-Bus command without blocking UI
 		this.mpris.playPause().catch(() => {
 			// If D-Bus fails, revert the optimistic update
-			this.state.isPlaying = !this.state.isPlaying;
-			if (this.state.currentTrack) {
-				this.state.currentTrack.isPlaying = this.state.isPlaying;
+			this.stateManager.setIsPlaying(state.isPlaying);
+			if (state.currentTrack) {
+				this.stateManager.setCurrentTrack(state.currentTrack);
 			}
 			this.onActionFeedback("Command failed");
 		});
@@ -135,7 +141,7 @@ export class PlaybackController implements IPlaybackController {
 		// OPTIMISTIC UPDATE: Update UI immediately BEFORE D-Bus call
 		const previousShuffle = currentShuffle;
 		const newShuffle = !currentShuffle;
-		this.onShuffleUpdate(newShuffle);
+		this.stateManager.setShuffle(newShuffle);
 		this.mprisStateManager.setShuffleCooldown();
 		this.updateUI();
 
@@ -145,7 +151,7 @@ export class PlaybackController implements IPlaybackController {
 		// Fire-and-forget: Send D-Bus command without blocking UI
 		this.mpris.toggleShuffle(previousShuffle).catch(() => {
 			// If D-Bus fails, revert
-			this.onShuffleUpdate(previousShuffle);
+			this.stateManager.setShuffle(previousShuffle);
 			this.onActionFeedback("Command failed");
 		});
 	}
@@ -172,7 +178,7 @@ export class PlaybackController implements IPlaybackController {
 				: currentRepeat === "Playlist"
 					? "Track"
 					: "None";
-		this.onRepeatUpdate(nextRepeat);
+		this.stateManager.setRepeat(nextRepeat);
 		this.mprisStateManager.setRepeatCooldown();
 		this.updateUI();
 
@@ -182,7 +188,7 @@ export class PlaybackController implements IPlaybackController {
 		// Fire-and-forget: Send D-Bus command without blocking UI
 		this.mpris.cycleLoopStatus(previousRepeat).catch(() => {
 			// If D-Bus fails, revert
-			this.onRepeatUpdate(previousRepeat);
+			this.stateManager.setRepeat(previousRepeat);
 			this.onActionFeedback("Command failed");
 		});
 	}
@@ -191,13 +197,14 @@ export class PlaybackController implements IPlaybackController {
 	 * Update UI components after state changes
 	 */
 	private updateUI(): void {
+		const state = this.stateManager.getState();
 		const volume = this.getCurrentVolume();
 		const shuffle = this.getCurrentShuffle();
 		const repeat = this.getCurrentRepeat();
 
-		this.nowPlaying?.updateTrack(this.state.currentTrack);
+		this.nowPlaying?.updateTrack(state.currentTrack);
 		this.statusSidebar?.updateStatus(
-			this.state.currentTrack,
+			state.currentTrack,
 			volume,
 			shuffle,
 			repeat,
@@ -208,20 +215,20 @@ export class PlaybackController implements IPlaybackController {
 	 * Get current volume
 	 */
 	private getCurrentVolume(): number {
-		return this.state.volume;
+		return this.stateManager.getState().volume;
 	}
 
 	/**
 	 * Get current shuffle state
 	 */
 	private getCurrentShuffle(): boolean {
-		return this.state.shuffle;
+		return this.stateManager.getState().shuffle;
 	}
 
 	/**
 	 * Get current repeat mode
 	 */
 	private getCurrentRepeat(): LoopStatus {
-		return this.state.repeat as LoopStatus;
+		return this.stateManager.getState().repeat as LoopStatus;
 	}
 }

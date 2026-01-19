@@ -20,6 +20,7 @@ const logger = getLogger("AppLifecycle");
  */
 export class AppLifecycle implements IAppLifecycle {
 	private _exiting = false;
+	private resizeHandler: (() => void) | null = null;
 
 	constructor(
 		private renderer: CliRenderer,
@@ -77,7 +78,8 @@ export class AppLifecycle implements IAppLifecycle {
 		});
 
 		// Listen for terminal resize events
-		process.stdout.on("resize", () => this.handleResize());
+		this.resizeHandler = () => this.handleResize();
+		process.stdout.on("resize", this.resizeHandler);
 	}
 
 	/**
@@ -139,6 +141,12 @@ export class AppLifecycle implements IAppLifecycle {
 		if (this.updateInterval) {
 			clearInterval(this.updateInterval);
 			this.updateInterval = null;
+		}
+
+		// Remove resize listener
+		if (this.resizeHandler) {
+			process.stdout.removeListener("resize", this.resizeHandler);
+			this.resizeHandler = null;
 		}
 
 		// Disconnect MPRIS (synchronous)
