@@ -7,3 +7,12 @@ export {
 	type LoggerConfig,
 } from "./Logger";
 export { copyToClipboard } from "./clipboard";
+export {
+	checkFileIntegrity,
+	compareVersions,
+	getBackoffDelay,
+	isVersionValid,
+	parseVersion,
+	sleep,
+	type FileCheckResult,
+} from "./integrity";

@@ -32,5 +32,15 @@ export const getMprisService = useNativeModule
 	: getTypescriptMprisService;
 
 export { getSpotifyApiService, SpotifyApiService } from "./SpotifyApiService";
+export type {
+	InstallResult,
+	InstallState,
+	ProgressCallback,
+	VerificationResult,
+} from "./SpotifydInstaller";
+export {
+	getSpotifydInstaller,
+	SpotifydInstaller,
+} from "./SpotifydInstaller";
 export type { SpotifydConfig, SpotifydStatus } from "./SpotifydManager";
 export { getSpotifydManager, SpotifydManager } from "./SpotifydManager";

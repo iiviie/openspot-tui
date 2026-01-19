@@ -11,6 +11,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import open from "open";
 import { getLogger } from "../utils";
+import { getSpotifydInstaller } from "./SpotifydInstaller";
 
 const logger = getLogger("SpotifydManager");
 
@@ -392,6 +393,17 @@ export class SpotifydManager {
 	 * Returns true if started successfully or already running
 	 */
 	async start(): Promise<{ success: boolean; message: string }> {
+		// Verify installation integrity before starting
+		const installer = getSpotifydInstaller();
+		const verification = await installer.verify();
+
+		if (!verification.canProceed) {
+			return {
+				success: false,
+				message: `spotifyd verification failed: ${verification.error || verification.state}`,
+			};
+		}
+
 		// Check if already running
 		if (this.isRunning()) {
 			return {
