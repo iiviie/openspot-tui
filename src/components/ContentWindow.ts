@@ -2,6 +2,7 @@ import { BoxRenderable, TextRenderable } from "@opentui/core";
 import { colors } from "../config/colors";
 import type { CliRenderer, LayoutDimensions } from "../types";
 import type { SpotifyPlaylist, SpotifyTrack } from "../types/spotify";
+import { typedBox, typedText, TypedBox, TypedText } from "../ui";
 
 /**
  * Content item types
@@ -36,6 +37,11 @@ export class ContentWindow {
 	private isFocused: boolean = false;
 	private isLoading: boolean = false;
 
+	// Typed wrappers for type-safe updates
+	private typedContainer: TypedBox;
+	private typedHeaderText: TypedText;
+	private typedItems: TypedText[] = [];
+
 	// Callbacks
 	public onTrackSelect: ((uri: string) => void) | null = null;
 	public onPlaylistSelect:
@@ -48,6 +54,10 @@ export class ContentWindow {
 	) {
 		this.container = this.createContainer();
 		this.headerText = this.createHeader();
+
+		// Wrap renderables for type-safe updates
+		this.typedContainer = typedBox(this.container);
+		this.typedHeaderText = typedText(this.headerText);
 	}
 
 	private createContainer(): BoxRenderable {
@@ -80,9 +90,9 @@ export class ContentWindow {
 	 */
 	setFocused(focused: boolean): void {
 		this.isFocused = focused;
-		(this.container as any).borderColor = focused
-			? colors.accent
-			: colors.border;
+		this.typedContainer.update({
+			borderColor: focused ? colors.accent : colors.border,
+		});
 	}
 
 	/**
@@ -169,7 +179,7 @@ export class ContentWindow {
 			subtitle: track.artists.map((a) => a.name).join(", "),
 			duration: this.formatDuration(track.duration_ms),
 			type: "track" as const,
-		})) as any;
+		}));
 
 		if (this.results.length === 0) {
 			this.statusMessage = "No tracks found";
@@ -217,12 +227,12 @@ export class ContentWindow {
 	}
 
 	private updateHeaderDisplay(): void {
-		(this.headerText as any).content = this.statusMessage;
+		this.typedHeaderText.update({ content: this.statusMessage });
 	}
 
 	private clearItemsDisplay(): void {
-		this.items.forEach((item) => {
-			(item as any).content = "";
+		this.typedItems.forEach((item) => {
+			item.update({ content: "" });
 		});
 	}
 
@@ -240,6 +250,7 @@ export class ContentWindow {
 				top: this.layout.contentWindowY + 3 + this.items.length,
 			});
 			this.items.push(item);
+			this.typedItems.push(typedText(item));
 			this.renderer.root.add(item);
 		}
 
@@ -247,7 +258,7 @@ export class ContentWindow {
 		for (let i = 0; i < this.items.length; i++) {
 			// Hide items that are beyond the visible area (important for resize)
 			if (i >= maxVisibleItems) {
-				(this.items[i] as any).content = "";
+				this.typedItems[i].update({ content: "" });
 				continue;
 			}
 
@@ -271,7 +282,7 @@ export class ContentWindow {
 					// Track formatting with aligned duration column
 					const durationWidth = 6; // " 3:45 " format
 					const availableWidth = maxWidth - durationWidth;
-					const duration = (result as any).duration || "";
+					const duration = result.duration || "";
 
 					// Split available width: ~60% for title, ~40% for artist
 					const titleWidth = Math.floor(availableWidth * 0.5);
@@ -305,12 +316,12 @@ export class ContentWindow {
 					}
 				}
 
-				(this.items[i] as any).content = content;
-				(this.items[i] as any).fg = isSelected
-					? colors.textPrimary
-					: colors.textSecondary;
+				this.typedItems[i].update({
+					content,
+					fg: isSelected ? colors.textPrimary : colors.textSecondary,
+				});
 			} else {
-				(this.items[i] as any).content = "";
+				this.typedItems[i].update({ content: "" });
 			}
 		}
 	}
@@ -397,19 +408,25 @@ export class ContentWindow {
 		this.layout = layout;
 
 		// Update container
-		(this.container as any).width = layout.centerWidth;
-		(this.container as any).height = layout.contentWindowHeight;
-		(this.container as any).left = layout.centerX;
-		(this.container as any).top = layout.contentWindowY;
+		this.typedContainer.update({
+			width: layout.centerWidth,
+			height: layout.contentWindowHeight,
+			left: layout.centerX,
+			top: layout.contentWindowY,
+		});
 
 		// Update header
-		(this.headerText as any).left = layout.centerX + 2;
-		(this.headerText as any).top = layout.contentWindowY + 1;
+		this.typedHeaderText.update({
+			left: layout.centerX + 2,
+			top: layout.contentWindowY + 1,
+		});
 
 		// Update existing items positions
 		this.items.forEach((item, index) => {
-			(item as any).left = layout.centerX + 2;
-			(item as any).top = layout.contentWindowY + 3 + index;
+			this.typedItems[index].update({
+				left: layout.centerX + 2,
+				top: layout.contentWindowY + 3 + index,
+			});
 		});
 
 		// Rebuild items to handle new visible area size

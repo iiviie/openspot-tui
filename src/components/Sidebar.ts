@@ -2,6 +2,7 @@ import { BoxRenderable, TextRenderable } from "@opentui/core";
 import { colors } from "../config/colors";
 import { LIBRARY_MENU_ITEMS, UI_STRINGS } from "../config/constants";
 import type { CliRenderer, LayoutDimensions, MenuItem } from "../types";
+import { typedBox, typedText, TypedBox, TypedText } from "../ui";
 
 /**
  * Sidebar component displaying welcome section + library menu (left side)
@@ -16,6 +17,13 @@ export class Sidebar {
 	private readonly items: MenuItem[];
 	private isFocused: boolean = false;
 	private username: string | null = null;
+
+	// Typed wrappers for type-safe updates
+	private typedContainer: TypedBox;
+	private typedWelcomeTitle: TypedText;
+	private typedUsernameLabel: TypedText;
+	private typedTitle: TypedText;
+	private typedMenuItems: TypedText[] = [];
 
 	// Callback when menu item is selected
 	public onSelect: ((item: MenuItem) => void) | null = null;
@@ -33,6 +41,13 @@ export class Sidebar {
 		this.usernameLabel = this.createUsernameLabel();
 		this.title = this.createTitle();
 		this.menuItems = this.createMenuItems();
+
+		// Wrap renderables for type-safe updates
+		this.typedContainer = typedBox(this.container);
+		this.typedWelcomeTitle = typedText(this.welcomeTitle);
+		this.typedUsernameLabel = typedText(this.usernameLabel);
+		this.typedTitle = typedText(this.title);
+		this.typedMenuItems = this.menuItems.map((item) => typedText(item));
 	}
 
 	private createContainer(): BoxRenderable {
@@ -118,10 +133,10 @@ export class Sidebar {
 	 */
 	updateUsername(username: string | null): void {
 		this.username = username;
-		(this.usernameLabel as any).content = this.getUsernameText();
-		(this.usernameLabel as any).fg = this.username
-			? colors.textPrimary
-			: colors.textDim;
+		this.typedUsernameLabel.update({
+			content: this.getUsernameText(),
+			fg: this.username ? colors.textPrimary : colors.textDim,
+		});
 	}
 
 	/**
@@ -129,9 +144,9 @@ export class Sidebar {
 	 */
 	setFocused(focused: boolean): void {
 		this.isFocused = focused;
-		(this.container as any).borderColor = focused
-			? colors.accent
-			: colors.border;
+		this.typedContainer.update({
+			borderColor: focused ? colors.accent : colors.border,
+		});
 	}
 
 	/**
@@ -189,8 +204,10 @@ export class Sidebar {
 			const isSelected = index === this.selectedIndex;
 			const menuItem = this.items[index];
 
-			(item as any).content = this.formatMenuItem(menuItem.label, isSelected);
-			(item as any).fg = isSelected ? colors.textPrimary : colors.textSecondary;
+			this.typedMenuItems[index].update({
+				content: this.formatMenuItem(menuItem.label, isSelected),
+				fg: isSelected ? colors.textPrimary : colors.textSecondary,
+			});
 		});
 	}
 
@@ -214,26 +231,37 @@ export class Sidebar {
 		this.layout = layout;
 
 		// Update container
-		(this.container as any).width = layout.leftSidebarWidth;
-		(this.container as any).height = layout.leftSidebarHeight;
-		(this.container as any).left = layout.leftSidebarX;
-		(this.container as any).top = layout.leftSidebarY;
+		this.typedContainer.update({
+			width: layout.leftSidebarWidth,
+			height: layout.leftSidebarHeight,
+			left: layout.leftSidebarX,
+			top: layout.leftSidebarY,
+		});
 
 		// Update welcome section
-		(this.welcomeTitle as any).left = layout.leftSidebarX + 2;
-		(this.welcomeTitle as any).top = layout.leftSidebarY + 1;
-		(this.usernameLabel as any).left = layout.leftSidebarX + 2;
-		(this.usernameLabel as any).top = layout.leftSidebarY + 2;
-		(this.usernameLabel as any).content = this.getUsernameText();
+		this.typedWelcomeTitle.update({
+			left: layout.leftSidebarX + 2,
+			top: layout.leftSidebarY + 1,
+		});
+
+		this.typedUsernameLabel.update({
+			left: layout.leftSidebarX + 2,
+			top: layout.leftSidebarY + 2,
+			content: this.getUsernameText(),
+		});
 
 		// Update library title
-		(this.title as any).left = layout.leftSidebarX + 2;
-		(this.title as any).top = layout.leftSidebarY + 4;
+		this.typedTitle.update({
+			left: layout.leftSidebarX + 2,
+			top: layout.leftSidebarY + 4,
+		});
 
 		// Update menu items
 		this.menuItems.forEach((item, index) => {
-			(item as any).left = layout.leftSidebarX + 2;
-			(item as any).top = layout.leftSidebarY + 6 + index;
+			this.typedMenuItems[index].update({
+				left: layout.leftSidebarX + 2,
+				top: layout.leftSidebarY + 6 + index,
+			});
 		});
 	}
 

@@ -1,6 +1,7 @@
 import { BoxRenderable, TextRenderable } from "@opentui/core";
 import { colors } from "../config/colors";
 import type { CliRenderer, LayoutDimensions } from "../types";
+import { typedBox, typedText, TypedBox, TypedText } from "../ui";
 
 /**
  * Search bar component at the top center of the layout
@@ -14,6 +15,10 @@ export class SearchBar {
 	private cursorVisible: boolean = true;
 	private cursorInterval: Timer | null = null;
 
+	// Typed wrappers for type-safe updates
+	private typedContainer: TypedBox;
+	private typedLabel: TypedText;
+
 	// Callback when search is submitted
 	public onSearch: ((query: string) => void) | null = null;
 
@@ -23,6 +28,10 @@ export class SearchBar {
 	) {
 		this.container = this.createContainer();
 		this.label = this.createLabel();
+
+		// Wrap renderables for type-safe updates
+		this.typedContainer = typedBox(this.container);
+		this.typedLabel = typedText(this.label);
 	}
 
 	private createContainer(): BoxRenderable {
@@ -157,9 +166,11 @@ export class SearchBar {
 
 	private updateDisplay(): void {
 		const content = this.getDisplayContent();
-		(this.label as any).content = content;
-		(this.label as any).fg =
-			this.searchText || this.isActive ? colors.textPrimary : colors.textDim;
+		this.typedLabel.update({
+			content,
+			fg:
+				this.searchText || this.isActive ? colors.textPrimary : colors.textDim,
+		});
 	}
 
 	/**
@@ -177,14 +188,18 @@ export class SearchBar {
 		this.layout = layout;
 
 		// Update container
-		(this.container as any).width = layout.centerWidth;
-		(this.container as any).height = layout.searchBarHeight;
-		(this.container as any).left = layout.centerX;
-		(this.container as any).top = layout.searchBarY;
+		this.typedContainer.update({
+			width: layout.centerWidth,
+			height: layout.searchBarHeight,
+			left: layout.centerX,
+			top: layout.searchBarY,
+		});
 
 		// Update label
-		(this.label as any).left = layout.centerX + 2;
-		(this.label as any).top = layout.searchBarY + 1;
+		this.typedLabel.update({
+			left: layout.centerX + 2,
+			top: layout.searchBarY + 1,
+		});
 	}
 
 	/**

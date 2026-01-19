@@ -6,6 +6,7 @@ import {
 	TOAST_WIDTH_PERCENT,
 } from "../config/constants";
 import type { CliRenderer, LayoutDimensions } from "../types";
+import { typedBox, typedText, TypedBox, TypedText } from "../ui";
 
 /**
  * Toast notification types
@@ -47,6 +48,11 @@ export class Toast {
 	private titleLabel: TextRenderable;
 	private messageLabel: TextRenderable;
 
+	// Typed wrappers for type-safe updates
+	private typedContainer: TypedBox;
+	private typedTitleLabel: TypedText;
+	private typedMessageLabel: TypedText;
+
 	constructor(
 		renderer: CliRenderer,
 		config: ToastConfig,
@@ -74,6 +80,11 @@ export class Toast {
 		this.container = this.createContainer();
 		this.titleLabel = this.createTitleLabel();
 		this.messageLabel = this.createMessageLabel();
+
+		// Wrap renderables for type-safe updates
+		this.typedContainer = typedBox(this.container);
+		this.typedTitleLabel = typedText(this.titleLabel);
+		this.typedMessageLabel = typedText(this.messageLabel);
 	}
 
 	/**
@@ -247,12 +258,9 @@ export class Toast {
 		if (!this.addedToRenderer) return;
 
 		// Update positions using the renderable properties
-		(this.container as any).left = this.x;
-		(this.container as any).top = this.y;
-		(this.titleLabel as any).left = this.x + 2;
-		(this.titleLabel as any).top = this.y + 1;
-		(this.messageLabel as any).left = this.x + 2;
-		(this.messageLabel as any).top = this.y + 2;
+		this.typedContainer.update({ left: this.x, top: this.y });
+		this.typedTitleLabel.update({ left: this.x + 2, top: this.y + 1 });
+		this.typedMessageLabel.update({ left: this.x + 2, top: this.y + 2 });
 	}
 
 	/**
@@ -345,12 +353,16 @@ export class Toast {
 			this.calculateHeight();
 
 			// Update container dimensions
-			(this.container as any).width = this.width;
-			(this.container as any).height = this.height;
+			this.typedContainer.update({
+				width: this.width,
+				height: this.height,
+			});
 
 			// Rewrap message text
 			const messageLines = this.wrapText(this.config.message, this.width - 4);
-			(this.messageLabel as any).content = messageLines.join("\n");
+			this.typedMessageLabel.update({
+				content: messageLines.join("\n"),
+			});
 		}
 
 		// Update positions

@@ -2,6 +2,7 @@ import { BoxRenderable, TextRenderable } from "@opentui/core";
 import { colors } from "../config/colors";
 import { UI_STRINGS } from "../config/constants";
 import type { CliRenderer, CurrentTrack, LayoutDimensions } from "../types";
+import { typedBox, typedText, TypedBox, TypedText } from "../ui";
 
 /**
  * Now Playing component - full width bar at the bottom
@@ -12,7 +13,12 @@ export class NowPlaying {
 	private trackLine: TextRenderable;
 	private progressLine: TextRenderable;
 
-	private readonly progressBarWidth: number;
+	private progressBarWidth: number;
+
+	// Typed wrappers for type-safe updates
+	private typedContainer: TypedBox;
+	private typedTrackLine: TypedText;
+	private typedProgressLine: TypedText;
 
 	constructor(
 		private renderer: CliRenderer,
@@ -28,6 +34,11 @@ export class NowPlaying {
 		this.container = this.createContainer();
 		this.trackLine = this.createTrackLine();
 		this.progressLine = this.createProgressLine();
+
+		// Wrap renderables for type-safe updates
+		this.typedContainer = typedBox(this.container);
+		this.typedTrackLine = typedText(this.trackLine);
+		this.typedProgressLine = typedText(this.progressLine);
 	}
 
 	private createContainer(): BoxRenderable {
@@ -127,16 +138,20 @@ export class NowPlaying {
 		const trackLeftPos = Math.floor(
 			(this.layout.termWidth - trackContent.length) / 2,
 		);
-		(this.trackLine as any).content = trackContent;
-		(this.trackLine as any).left = Math.max(2, trackLeftPos);
+		this.typedTrackLine.update({
+			content: trackContent,
+			left: Math.max(2, trackLeftPos),
+		});
 
 		// Update progress line content and position
 		const progressContent = this.getProgressLineContent();
 		const progressLeftPos = Math.floor(
 			(this.layout.termWidth - progressContent.length) / 2,
 		);
-		(this.progressLine as any).content = progressContent;
-		(this.progressLine as any).left = Math.max(2, progressLeftPos);
+		this.typedProgressLine.update({
+			content: progressContent,
+			left: Math.max(2, progressLeftPos),
+		});
 	}
 
 	/**
@@ -153,31 +168,34 @@ export class NowPlaying {
 	 */
 	updateLayout(layout: LayoutDimensions): void {
 		this.layout = layout;
-		(this as any).progressBarWidth = Math.max(
-			20,
-			Math.floor(layout.termWidth * 0.6),
-		);
+		this.progressBarWidth = Math.max(20, Math.floor(layout.termWidth * 0.6));
 
 		// Update container
-		(this.container as any).width = layout.termWidth;
-		(this.container as any).height = layout.nowPlayingHeight;
-		(this.container as any).left = 0;
-		(this.container as any).top = layout.nowPlayingY;
+		this.typedContainer.update({
+			width: layout.termWidth,
+			height: layout.nowPlayingHeight,
+			left: 0,
+			top: layout.nowPlayingY,
+		});
 
 		// Update track and progress lines with new positions
 		const trackContent = this.getTrackLineContent();
 		const trackLeftPos = Math.floor(
 			(layout.termWidth - trackContent.length) / 2,
 		);
-		(this.trackLine as any).left = Math.max(2, trackLeftPos);
-		(this.trackLine as any).top = layout.nowPlayingY + 1;
+		this.typedTrackLine.update({
+			left: Math.max(2, trackLeftPos),
+			top: layout.nowPlayingY + 1,
+		});
 
 		const progressContent = this.getProgressLineContent();
 		const progressLeftPos = Math.floor(
 			(layout.termWidth - progressContent.length) / 2,
 		);
-		(this.progressLine as any).left = Math.max(2, progressLeftPos);
-		(this.progressLine as any).top = layout.nowPlayingY + 3;
+		this.typedProgressLine.update({
+			left: Math.max(2, progressLeftPos),
+			top: layout.nowPlayingY + 3,
+		});
 	}
 
 	/**

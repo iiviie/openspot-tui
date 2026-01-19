@@ -1,6 +1,7 @@
 import { BoxRenderable, TextRenderable } from "@opentui/core";
 import { colors } from "../config/colors";
 import type { CliRenderer, CurrentTrack, LayoutDimensions } from "../types";
+import { typedText, TypedText } from "../ui";
 
 /**
  * Status bar component at the bottom of the screen
@@ -10,6 +11,9 @@ export class StatusBar {
 	private statusText: TextRenderable;
 	private controls: TextRenderable;
 
+	// Typed wrapper for type-safe updates
+	private typedStatusText: TypedText;
+
 	constructor(
 		private renderer: CliRenderer,
 		private layout: LayoutDimensions,
@@ -18,6 +22,9 @@ export class StatusBar {
 		this.container = this.createContainer();
 		this.statusText = this.createStatusText();
 		this.controls = this.createControls();
+
+		// Wrap renderable for type-safe updates
+		this.typedStatusText = typedText(this.statusText);
 	}
 
 	private createContainer(): BoxRenderable {
@@ -73,7 +80,7 @@ export class StatusBar {
 	 */
 	updateTrack(track: CurrentTrack | null): void {
 		this.track = track;
-		(this.statusText as any).content = this.getStatusContent();
+		this.typedStatusText.update({ content: this.getStatusContent() });
 	}
 
 	/**
