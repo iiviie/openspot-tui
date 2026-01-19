@@ -127,6 +127,7 @@ export interface KeyEvent {
 	ctrl: boolean;
 	shift: boolean;
 	meta: boolean;
+	sequence?: string; // Raw sequence (shifted characters, special chars)
 }
 
 /**

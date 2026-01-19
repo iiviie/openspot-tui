@@ -1,5 +1,5 @@
 import type { IPlaybackController } from "../interfaces";
-import type { IMprisService } from "../types/mpris";
+import type { IMprisService, LoopStatus } from "../types/mpris";
 import type { AppState, CurrentTrack } from "../types";
 import type { StatusSidebar, NowPlaying } from "../components";
 import type { MprisStateManager } from "./MprisStateManager";
@@ -180,7 +180,7 @@ export class PlaybackController implements IPlaybackController {
 		this.onActionFeedback(`Repeat: ${nextRepeat}`);
 
 		// Fire-and-forget: Send D-Bus command without blocking UI
-		this.mpris.cycleLoopStatus(previousRepeat as any).catch(() => {
+		this.mpris.cycleLoopStatus(previousRepeat).catch(() => {
 			// If D-Bus fails, revert
 			this.onRepeatUpdate(previousRepeat);
 			this.onActionFeedback("Command failed");
@@ -221,7 +221,7 @@ export class PlaybackController implements IPlaybackController {
 	/**
 	 * Get current repeat mode
 	 */
-	private getCurrentRepeat(): string {
-		return this.state.repeat;
+	private getCurrentRepeat(): LoopStatus {
+		return this.state.repeat as LoopStatus;
 	}
 }

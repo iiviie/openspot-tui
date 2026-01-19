@@ -78,10 +78,9 @@ export class ServiceContainer {
 	dispose(): void {
 		for (const registration of this.services.values()) {
 			if (registration.singleton && registration.instance) {
-				const instance = registration.instance as any;
-				if (typeof instance.dispose === "function") {
-					instance.dispose();
-				}
+				// Type-safe check for optional dispose method
+				const instance = registration.instance as { dispose?: () => void };
+				instance.dispose?.();
 			}
 		}
 		this.services.clear();

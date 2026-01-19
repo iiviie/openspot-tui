@@ -161,12 +161,14 @@ export class AppLifecycle implements IAppLifecycle {
 
 		// Try to stop/destroy renderer
 		try {
-			if (typeof (this.renderer as any).stop === "function") {
-				(this.renderer as any).stop();
-			}
-			if (typeof (this.renderer as any).destroy === "function") {
-				(this.renderer as any).destroy();
-			}
+			// Type-safe check for optional methods
+			const rendererWithOptionalMethods = this.renderer as {
+				stop?: () => void;
+				destroy?: () => void;
+			};
+
+			rendererWithOptionalMethods.stop?.();
+			rendererWithOptionalMethods.destroy?.();
 		} catch (e) {
 			// Ignore errors during cleanup
 		}

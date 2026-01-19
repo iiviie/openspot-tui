@@ -183,9 +183,9 @@ export class InputHandler implements IInputHandler {
 		// Regular character input
 		if (key.name && key.name.length === 1) {
 			this.searchBar.handleChar(key.name);
-		} else if ((key as any).sequence && (key as any).sequence.length === 1) {
+		} else if (key.sequence && key.sequence.length === 1) {
 			// Handle shifted characters and special chars
-			this.searchBar.handleChar((key as any).sequence);
+			this.searchBar.handleChar(key.sequence);
 		}
 	}
 

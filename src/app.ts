@@ -22,7 +22,12 @@ import {
 	getPersistentCache,
 	PersistentCacheKeys,
 } from "./services/PersistentCacheService";
-import type { AppState, CliRenderer, LayoutDimensions } from "./types";
+import type {
+	AppState,
+	CliRenderer,
+	LayoutDimensions,
+	KeyEvent,
+} from "./types";
 import type { IMprisService } from "./types/mpris";
 import { calculateLayout, getLogger } from "./utils";
 import { getMprisService } from "./services";
@@ -513,7 +518,12 @@ export class App {
 	 * Setup keyboard input handlers
 	 */
 	private setupInputHandlers(): void {
-		(this.renderer.keyInput as any).on("keypress", (key: any) => {
+		// Type-safe access to keyInput event emitter
+		const keyInput = this.renderer.keyInput as {
+			on: (event: string, handler: (key: KeyEvent) => void) => void;
+		};
+
+		keyInput.on("keypress", (key: KeyEvent) => {
 			this.inputHandler.handleKeyPress(key);
 		});
 	}
