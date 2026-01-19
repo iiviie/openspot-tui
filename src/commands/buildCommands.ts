@@ -1,6 +1,6 @@
 import type { Command } from "../components";
 import type { IMprisService } from "../types/mpris";
-import type { SpotifyApiService, SpotifydManager } from "../services";
+import type { SpotifyApiService, SpotifydService } from "../services";
 import type { ContentWindow } from "../components/ContentWindow";
 import type { ToastManager } from "../components/ToastManager";
 import type { SearchBar } from "../components/SearchBar";

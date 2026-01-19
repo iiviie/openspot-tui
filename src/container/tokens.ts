@@ -23,7 +23,8 @@ export const TOKENS = {
 	NativeMprisAdapter: Symbol("NativeMprisAdapter"),
 
 	// Spotifyd Management
-	SpotifydManager: Symbol("SpotifydManager"),
+	SpotifydManager: Symbol("SpotifydManager"), // Legacy - to be removed
+	SpotifydService: Symbol("SpotifydService"), // New unified service
 	SpotifydInstaller: Symbol("SpotifydInstaller"),
 
 	// Application Services

@@ -13,9 +13,9 @@ import { PLAYBACK_UPDATE_DELAY_MS, UPDATE_INTERVAL_MS } from "./config";
 import { mockQueue } from "./data/mock";
 import {
 	getSpotifyApiService,
-	getSpotifydManager,
+	getSpotifydService,
 	type SpotifyApiService,
-	type SpotifydManager,
+	type SpotifydService,
 	getErrorHandler,
 	type ErrorHandler,
 } from "./services";
@@ -69,7 +69,7 @@ export class App {
 	private layout!: LayoutDimensions;
 	private mpris!: IMprisService;
 	private spotifyApi!: SpotifyApiService;
-	private spotifydManager!: SpotifydManager;
+	private spotifydService!: SpotifydService;
 	private updateInterval: Timer | null = null;
 
 	// Components
@@ -173,7 +173,7 @@ export class App {
 	 * Initialize core services (MPRIS, Spotify API, spotifyd)
 	 */
 	private async initializeServices(): Promise<void> {
-		this.spotifydManager = getSpotifydManager();
+		this.spotifydService = getSpotifydService();
 		this.mpris = getMprisService();
 		this.spotifyApi = getSpotifyApiService();
 
@@ -187,7 +187,7 @@ export class App {
 	 * Initialize spotifyd (temporary - will move to ConnectionManager)
 	 */
 	private async initializeSpotifyd(): Promise<void> {
-		const result = await this.spotifydManager.start();
+		const result = await this.spotifydService.start();
 		if (!result.success) {
 			logger.warn("spotifyd not running");
 			logger.always("   Press Ctrl+P → 'Authenticate Spotifyd' to set up\n");
@@ -303,7 +303,7 @@ export class App {
 		this.connectionManager = new ConnectionManager(
 			this.mpris,
 			this.spotifyApi,
-			this.spotifydManager,
+			this.spotifydService,
 			this.statusSidebar,
 			this.contentWindow,
 			this.toastManager,
@@ -319,7 +319,7 @@ export class App {
 
 		// Authentication Controller - handles login/logout
 		this.authController = new AuthenticationController(
-			this.spotifydManager,
+			this.spotifydService,
 			this.connectionManager,
 			this.navigationController,
 			this.contentWindow,
@@ -391,7 +391,7 @@ export class App {
 			authenticateSpotifyd: async () =>
 				await this.authController.authenticateSpotifyd(),
 			startSpotifyd: async () => {
-				const result = await this.spotifydManager.start();
+				const result = await this.spotifydService.start();
 				this.connectionManager.updateConnectionStatus();
 				this.contentWindow.setStatus(result.message);
 			},
@@ -399,7 +399,7 @@ export class App {
 				if (this.state.isPlaying) {
 					await this.mpris?.pause();
 				}
-				this.spotifydManager.stop(true);
+				this.spotifydService.stop(true);
 				this.connectionManager.updateConnectionStatus();
 				this.toastManager.info(
 					"Spotifyd Stopped",
@@ -412,9 +412,9 @@ export class App {
 				if (this.state.isPlaying) {
 					await this.mpris?.pause();
 				}
-				this.spotifydManager.stop(true);
+				this.spotifydService.stop(true);
 				await new Promise((resolve) => setTimeout(resolve, 1000));
-				const result = await this.spotifydManager.start();
+				const result = await this.spotifydService.start();
 				this.connectionManager.updateConnectionStatus();
 				this.toastManager.info("Spotifyd Restarted", result.message, 3000);
 			},
@@ -457,6 +457,39 @@ export class App {
 			);
 		} catch (error) {
 			logger.error("Failed to play track", error);
+
+			// Check if spotifyd died during playback attempt
+			const isHealthy = await this.spotifydService.isHealthy();
+			if (!isHealthy) {
+				this.toastManager.warning("Spotifyd Crashed", "Restarting...", 3000);
+				this.connectionManager.updateConnectionStatus();
+
+				// Attempt to restart spotifyd
+				const result = await this.spotifydService.start();
+				if (result.success) {
+					// Reconnect MPRIS after spotifyd restart
+					this.toastManager.info(
+						"Reconnecting",
+						"Connecting to MPRIS...",
+						2000,
+					);
+					const mprisConnected =
+						await this.connectionManager.reconnectMprisWithRetry(5);
+
+					if (mprisConnected) {
+						this.toastManager.success("Ready", "Try playing again", 3000);
+					} else {
+						this.toastManager.warning(
+							"MPRIS Failed",
+							"Playback may not work",
+							4000,
+						);
+					}
+					this.connectionManager.updateConnectionStatus();
+				} else {
+					this.toastManager.error("Restart Failed", result.message, 5000);
+				}
+			}
 		}
 	}
 

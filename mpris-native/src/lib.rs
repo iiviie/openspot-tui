@@ -15,7 +15,7 @@ use supervisor::SupervisorInner;
 use std::fs::OpenOptions;
 use tokio::runtime::Runtime;
 use tracing_subscriber::{fmt, EnvFilter};
-use types::{PlaybackState, RepeatMode, SpotifydConfig, SpotifydStatus};
+use types::{PlaybackState, RepeatMode, SpotifydConfig, SpotifydStartResult, SpotifydStatus};
 
 // Re-export types for TypeScript
 pub use types::{ConnectionStatus, TrackInfo};
@@ -220,7 +220,19 @@ impl SpotifydSupervisor {
         }
     }
 
-    /// Start spotifyd and wait for D-Bus registration
+    /// Start spotifyd or adopt an existing instance
+    /// This is the primary method to use - handles both cases
+    #[napi]
+    pub async fn start_or_adopt(&self) -> Result<SpotifydStartResult> {
+        let inner = self.inner.clone();
+        let result = RUNTIME
+            .spawn(async move { inner.start_or_adopt().await })
+            .await
+            .map_err(|e| Error::from_reason(e.to_string()))??;
+        Ok(result)
+    }
+
+    /// Legacy start method (calls start_or_adopt internally)
     #[napi]
     pub async fn start(&self) -> Result<()> {
         let inner = self.inner.clone();
@@ -232,11 +244,13 @@ impl SpotifydSupervisor {
     }
 
     /// Stop spotifyd gracefully
+    /// @param force - If true, kill any spotifyd process. If false, only kill if we spawned it.
     #[napi]
-    pub async fn stop(&self) -> Result<()> {
+    pub async fn stop(&self, force: Option<bool>) -> Result<()> {
         let inner = self.inner.clone();
+        let force = force.unwrap_or(false);
         RUNTIME
-            .spawn(async move { inner.stop().await })
+            .spawn(async move { inner.stop(force).await })
             .await
             .map_err(|e| Error::from_reason(e.to_string()))??;
         Ok(())
@@ -246,6 +260,39 @@ impl SpotifydSupervisor {
     #[napi]
     pub fn get_status(&self) -> SpotifydStatus {
         self.inner.get_status()
+    }
+
+    /// Check if spotifyd is running (process alive)
+    #[napi]
+    pub async fn is_running(&self) -> Result<bool> {
+        let inner = self.inner.clone();
+        let alive = RUNTIME
+            .spawn(async move { inner.is_alive().await })
+            .await
+            .map_err(|e| Error::from_reason(e.to_string()))?;
+        Ok(alive)
+    }
+
+    /// Check if spotifyd is healthy (running AND D-Bus responsive)
+    #[napi]
+    pub async fn is_healthy(&self) -> Result<bool> {
+        let inner = self.inner.clone();
+        let healthy = RUNTIME
+            .spawn(async move { inner.is_healthy().await })
+            .await
+            .map_err(|e| Error::from_reason(e.to_string()))?;
+        Ok(healthy)
+    }
+
+    /// Get the PID of the tracked spotifyd process (if any)
+    #[napi]
+    pub async fn get_pid(&self) -> Result<Option<u32>> {
+        let inner = self.inner.clone();
+        let pid = RUNTIME
+            .spawn(async move { inner.get_tracked_pid().await })
+            .await
+            .map_err(|e| Error::from_reason(e.to_string()))?;
+        Ok(pid)
     }
 
     /// Subscribe to status changes
@@ -266,14 +313,9 @@ impl SpotifydSupervisor {
         Ok(())
     }
 
-    /// Check if spotifyd is healthy (synchronous)
+    /// Legacy check_health method (alias for is_healthy)
     #[napi]
     pub async fn check_health(&self) -> Result<bool> {
-        let inner = self.inner.clone();
-        let healthy = RUNTIME
-            .spawn(async move { inner.check_health().await })
-            .await
-            .map_err(|e| Error::from_reason(e.to_string()))?;
-        Ok(healthy)
+        self.is_healthy().await
     }
 }

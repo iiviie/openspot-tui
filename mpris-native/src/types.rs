@@ -48,6 +48,17 @@ pub struct SpotifydStatus {
     pub authenticated: bool,
 }
 
+/// Result of starting or adopting spotifyd
+#[napi(object)]
+#[derive(Clone, Debug)]
+pub struct SpotifydStartResult {
+    pub success: bool,
+    pub message: String,
+    pub pid: Option<u32>,
+    /// True if we adopted an existing process, false if we spawned a new one
+    pub adopted: bool,
+}
+
 #[napi(object)]
 #[derive(Clone, Debug)]
 pub struct SpotifydConfig {

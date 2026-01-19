@@ -1,5 +1,5 @@
 import type { IAuthenticationController } from "../interfaces";
-import type { SpotifydManager } from "../services";
+import type { SpotifydService } from "../services";
 import type { ConnectionManager } from "./ConnectionManager";
 import type { NavigationController } from "./NavigationController";
 import type { ContentWindow } from "../components/ContentWindow";
@@ -20,7 +20,7 @@ const logger = getLogger("AuthenticationController");
  */
 export class AuthenticationController implements IAuthenticationController {
 	constructor(
-		private spotifydManager: SpotifydManager,
+		private spotifydService: SpotifydService,
 		private connectionManager: ConnectionManager,
 		private navigationController: NavigationController,
 		private contentWindow: ContentWindow,
@@ -111,11 +111,11 @@ export class AuthenticationController implements IAuthenticationController {
 		// Set authenticating state
 		this.connectionManager.setSpotifydState("authenticating");
 
-		// Check if spotifyd is running - we may need to stop it to avoid port conflicts
-		const wasRunning = this.spotifydManager.isManagedByUs();
+		// Check if spotifyd is running - we need to stop it to avoid port conflicts during auth
+		const wasRunning = await this.spotifydService.isRunning();
 		if (wasRunning) {
 			this.connectionManager.setSpotifydState("stopping");
-			this.spotifydManager.stop();
+			await this.spotifydService.stop(true); // Force stop any running instance
 			// Wait for it to fully stop
 			await new Promise((resolve) => setTimeout(resolve, 500));
 		}
@@ -123,7 +123,7 @@ export class AuthenticationController implements IAuthenticationController {
 		this.connectionManager.setSpotifydState("authenticating");
 		this.onRender();
 
-		const result = await this.spotifydManager.authenticate();
+		const result = await this.spotifydService.authenticate();
 
 		if (result.success) {
 			this.toastManager?.success("Spotifyd Auth", "Starting spotifyd...", 2000);
@@ -131,7 +131,7 @@ export class AuthenticationController implements IAuthenticationController {
 			this.onRender();
 
 			// Restart spotifyd with new credentials
-			const startResult = await this.spotifydManager.start();
+			const startResult = await this.spotifydService.start();
 			if (startResult.success) {
 				this.connectionManager.setSpotifydState("running");
 				this.connectionManager.setMprisState("connecting");
@@ -166,7 +166,7 @@ export class AuthenticationController implements IAuthenticationController {
 			// Try to restart spotifyd if we stopped it
 			if (wasRunning) {
 				this.connectionManager.setSpotifydState("starting");
-				await this.spotifydManager.start();
+				await this.spotifydService.start();
 				this.connectionManager.setSpotifydState("running");
 			}
 		}
@@ -177,7 +177,7 @@ export class AuthenticationController implements IAuthenticationController {
 	 */
 	checkAuthStatusAndPrompt(): void {
 		const configService = getConfigService();
-		const spotifydStatus = this.spotifydManager.getStatus();
+		const spotifydStatus = this.spotifydService.getStatus();
 
 		const webApiLoggedIn = configService.hasCredentials();
 		const spotifydAuth = spotifydStatus.authenticated;

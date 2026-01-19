@@ -1,6 +1,6 @@
 import type { IConnectionManager } from "../interfaces";
 import type { IMprisService } from "../types/mpris";
-import type { SpotifyApiService, SpotifydManager } from "../services";
+import type { SpotifyApiService, SpotifydService } from "../services";
 import type { ConnectionStatus, StatusSidebar } from "../components";
 import type { ContentWindow } from "../components/ContentWindow";
 import type { ToastManager } from "../components/ToastManager";
@@ -21,7 +21,7 @@ export class ConnectionManager implements IConnectionManager {
 	constructor(
 		private mpris: IMprisService,
 		private spotifyApi: SpotifyApiService,
-		private spotifydManager: SpotifydManager,
+		private spotifydService: SpotifydService,
 		private statusSidebar: StatusSidebar,
 		private contentWindow: ContentWindow,
 		private toastManager: ToastManager | null,
@@ -32,7 +32,7 @@ export class ConnectionManager implements IConnectionManager {
 	 * Initialize and start spotifyd if needed
 	 */
 	async initializeSpotifyd(): Promise<void> {
-		const result = await this.spotifydManager.start();
+		const result = await this.spotifydService.start();
 
 		if (!result.success) {
 			// Warn but don't exit - user can authenticate later via Ctrl+P
@@ -132,7 +132,7 @@ export class ConnectionManager implements IConnectionManager {
 	 * Update connection status in the status sidebar
 	 */
 	updateConnectionStatus(): void {
-		const spotifydStatus = this.spotifydManager.getStatus();
+		const spotifydStatus = this.spotifydService.getStatus();
 
 		// Determine which backend is being used
 		const useNative = process.env.SPOTIFY_TUI_USE_NATIVE !== "0";

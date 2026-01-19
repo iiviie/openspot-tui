@@ -44,6 +44,14 @@ export {
 } from "./SpotifydInstaller";
 export type { SpotifydConfig, SpotifydStatus } from "./SpotifydManager";
 export { getSpotifydManager, SpotifydManager } from "./SpotifydManager";
+
+// New SpotifydService - uses Rust native module for process management
+export type {
+	SpotifydStatus as SpotifydServiceStatus,
+	SpotifydStartResult,
+	AuthResult,
+} from "./SpotifydService";
+export { SpotifydService, getSpotifydService } from "./SpotifydService";
 export type { ErrorContext } from "./ErrorHandler";
 export {
 	ErrorHandler,

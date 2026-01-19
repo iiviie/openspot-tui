@@ -15,7 +15,7 @@ import { getPersistentCache } from "../services/PersistentCacheService";
 import { getAuthService } from "../services/AuthService";
 import { getSpotifyApiService } from "../services";
 import { getMprisService } from "../services";
-import { getSpotifydManager } from "../services";
+import { getSpotifydService } from "../services";
 import { getLogger } from "../utils";
 
 const logger = getLogger("ServiceRegistration");
@@ -38,7 +38,7 @@ export function registerServices(container: ServiceContainer): void {
 
 	// MPRIS & Spotifyd
 	container.singleton(TOKENS.Mpris, () => getMprisService());
-	container.singleton(TOKENS.SpotifydManager, () => getSpotifydManager());
+	container.singleton(TOKENS.SpotifydService, () => getSpotifydService());
 
 	logger.debug("Service registration complete");
 }
@@ -56,7 +56,7 @@ export function validateServiceRegistration(
 		TOKENS.Auth,
 		TOKENS.SpotifyApi,
 		TOKENS.Mpris,
-		TOKENS.SpotifydManager,
+		TOKENS.SpotifydService,
 	];
 
 	for (const token of requiredTokens) {
