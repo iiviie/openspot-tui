@@ -698,11 +698,11 @@ export class App {
 			this.toastManager.success("Logged In", "Loading library...", 2000);
 			this.render();
 
-			// Reload library data
-			await this.loadSavedTracks();
-
-			// Fetch and cache user profile to update welcome message
-			await this.fetchAndCacheUserProfile();
+			// Reload library data and fetch user profile in parallel (independent operations)
+			await Promise.all([
+				this.loadSavedTracks(),
+				this.fetchAndCacheUserProfile(),
+			]);
 
 			// Update connection status to show logged in
 			this.updateConnectionStatus();
@@ -1601,11 +1601,34 @@ export class App {
 	 * Gracefully exit the application
 	 */
 	private exit(): void {
-		// Cleanup synchronously
+		// Pause playback first (give it a moment to send the command)
+		if (this.state.isPlaying && this.mpris) {
+			this.mpris
+				.pause()
+				.catch(() => {})
+				.finally(() => {
+					this.performExit();
+				});
+
+			// Fallback: exit after 200ms even if pause doesn't complete
+			setTimeout(() => this.performExit(), 200);
+		} else {
+			this.performExit();
+		}
+	}
+
+	/**
+	 * Perform the actual exit after cleanup
+	 */
+	private performExit(): void {
+		// Prevent multiple exits
+		if ((this as any)._exiting) return;
+		(this as any)._exiting = true;
+
 		this.cleanup();
 		cleanupTerminal();
 
-		// Force exit immediately - don't wait for async operations
+		// Force exit immediately
 		process.exit(0);
 	}
 
