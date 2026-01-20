@@ -6,13 +6,13 @@ A terminal user interface for Spotify, built with TypeScript and Bun.
 
 - [Bun](https://bun.sh/) >= 1.0.0
 - [Spotify Premium](https://www.spotify.com/premium/) account
-- Linux or macOS
+- **Linux x64 only** (uses D-Bus/MPRIS for media control, not available on macOS/Windows)
 
 ## Installation
 
 ```bash
 # Just run it (no install needed)
-bunx openspot-tui
+bunx openspot-tui@latest
 ```
 
 Or install globally:
