@@ -350,13 +350,23 @@ export class NativeMprisAdapter {
 	}
 
 	async volumeUp(amount: number = 0.05): Promise<void> {
-		const current = await this.getVolume();
-		await this.setVolume(current + amount);
+		if (!this.mpris) return;
+		try {
+			const current = await this.getVolume();
+			await this.setVolume(current + amount);
+		} catch {
+			// Volume control can fail - silently ignore
+		}
 	}
 
 	async volumeDown(amount: number = 0.05): Promise<void> {
-		const current = await this.getVolume();
-		await this.setVolume(current - amount);
+		if (!this.mpris) return;
+		try {
+			const current = await this.getVolume();
+			await this.setVolume(current - amount);
+		} catch {
+			// Volume control can fail - silently ignore
+		}
 	}
 
 	async toggleShuffle(currentState?: boolean): Promise<boolean> {
@@ -379,11 +389,21 @@ export class NativeMprisAdapter {
 	}
 
 	async seekForward(ms: number = 10000): Promise<void> {
-		await this.seek(ms * 1000); // Convert to microseconds
+		if (!this.mpris) return;
+		try {
+			await this.seek(ms * 1000); // Convert to microseconds
+		} catch {
+			// Seek can fail if no track is playing - silently ignore
+		}
 	}
 
 	async seekBackward(ms: number = 10000): Promise<void> {
-		await this.seek(-ms * 1000); // Convert to microseconds
+		if (!this.mpris) return;
+		try {
+			await this.seek(-ms * 1000); // Convert to microseconds
+		} catch {
+			// Seek can fail if no track is playing - silently ignore
+		}
 	}
 
 	// ─────────────────────────────────────────────────────────────

@@ -206,10 +206,14 @@ export class InputHandler implements IInputHandler {
 			case "p":
 				await this.playbackController.previous();
 				break;
-			case "equal": // + key
+			case "=": // Plus key (unshifted)
+			case "+": // Plus key (shifted)
+			case "equal":
 			case "plus":
 				await this.playbackController.volumeUp();
 				break;
+			case "-": // Minus key
+			case "_": // Minus key (shifted)
 			case "minus":
 				await this.playbackController.volumeDown();
 				break;

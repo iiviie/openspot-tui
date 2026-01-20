@@ -96,16 +96,40 @@ export class PlaybackController implements IPlaybackController {
 	 * Seek forward by milliseconds
 	 */
 	async seekForward(ms: number = SEEK_STEP_MS): Promise<void> {
+		// Don't seek if no track is playing
+		const state = this.stateManager.getState();
+		if (!state.currentTrack) {
+			logger.debug("Cannot seek forward: no track playing");
+			return;
+		}
+
 		this.onActionFeedback("Seek forward");
-		await this.mpris.seekForward(ms);
+		try {
+			await this.mpris.seekForward(ms);
+		} catch (error) {
+			logger.warn("Seek forward failed:", error);
+			this.onActionFeedback("Seek failed");
+		}
 	}
 
 	/**
 	 * Seek backward by milliseconds
 	 */
 	async seekBackward(ms: number = SEEK_STEP_MS): Promise<void> {
+		// Don't seek if no track is playing
+		const state = this.stateManager.getState();
+		if (!state.currentTrack) {
+			logger.debug("Cannot seek backward: no track playing");
+			return;
+		}
+
 		this.onActionFeedback("Seek backward");
-		await this.mpris.seekBackward(ms);
+		try {
+			await this.mpris.seekBackward(ms);
+		} catch (error) {
+			logger.warn("Seek backward failed:", error);
+			this.onActionFeedback("Seek failed");
+		}
 	}
 
 	/**
@@ -113,7 +137,12 @@ export class PlaybackController implements IPlaybackController {
 	 */
 	async volumeUp(): Promise<void> {
 		this.onActionFeedback("Volume up");
-		await this.mpris.volumeUp();
+		try {
+			await this.mpris.volumeUp();
+		} catch (error) {
+			logger.warn("Volume up failed:", error);
+			this.onActionFeedback("Volume failed");
+		}
 	}
 
 	/**
@@ -121,7 +150,12 @@ export class PlaybackController implements IPlaybackController {
 	 */
 	async volumeDown(): Promise<void> {
 		this.onActionFeedback("Volume down");
-		await this.mpris.volumeDown();
+		try {
+			await this.mpris.volumeDown();
+		} catch (error) {
+			logger.warn("Volume down failed:", error);
+			this.onActionFeedback("Volume failed");
+		}
 	}
 
 	/**
