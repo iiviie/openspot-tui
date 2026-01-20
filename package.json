@@ -1,6 +1,6 @@
 {
 	"name": "openspot-tui",
-	"version": "1.0.1",
+	"version": "1.0.2",
 	"description": "A terminal user interface for Spotify",
 	"type": "module",
 	"bin": {
@@ -53,8 +53,7 @@
 		"bun": ">=1.0.0"
 	},
 	"os": [
-		"linux",
-		"darwin"
+		"linux"
 	],
 	"cpu": [
 		"x64"
