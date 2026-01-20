@@ -64,6 +64,7 @@ export class StatusSidebar {
 	private mprisStatusLabel: TextRenderable;
 	private backendLabel: TextRenderable;
 	private activityLabel: TextRenderable;
+	private helpHint: TextRenderable;
 
 	// Typed wrappers (eliminates 'as any')
 	private typedContainer: TypedBox;
@@ -77,6 +78,7 @@ export class StatusSidebar {
 	private typedMprisStatusLabel: TypedText;
 	private typedBackendLabel: TypedText;
 	private typedActivityLabel: TypedText;
+	private typedHelpHint: TypedText;
 
 	private connectionStatus: ConnectionStatus = {
 		spotifydInstalled: false,
@@ -106,6 +108,7 @@ export class StatusSidebar {
 		this.mprisStatusLabel = this.createMprisStatusLabel();
 		this.backendLabel = this.createBackendLabel();
 		this.activityLabel = this.createActivityLabel();
+		this.helpHint = this.createHelpHint();
 
 		// Wrap with type-safe wrappers
 		this.typedContainer = typedBox(this.container);
@@ -119,6 +122,7 @@ export class StatusSidebar {
 		this.typedMprisStatusLabel = typedText(this.mprisStatusLabel);
 		this.typedBackendLabel = typedText(this.backendLabel);
 		this.typedActivityLabel = typedText(this.activityLabel);
+		this.typedHelpHint = typedText(this.helpHint);
 	}
 
 	private createContainer(): BoxRenderable {
@@ -365,6 +369,20 @@ export class StatusSidebar {
 		});
 	}
 
+	private createHelpHint(): TextRenderable {
+		// Position at bottom of sidebar (inside border)
+		const bottomY =
+			this.layout.rightSidebarY + this.layout.rightSidebarHeight - 2;
+		return new TextRenderable(this.renderer, {
+			id: "help-hint",
+			content: "? Help",
+			fg: colors.textDim,
+			position: "absolute",
+			left: this.layout.rightSidebarX + 2,
+			top: bottomY,
+		});
+	}
+
 	private getActivityText(): string {
 		const lastAction = this.connectionStatus.lastAction;
 		const lastTime = this.connectionStatus.lastActionTime;
@@ -465,6 +483,7 @@ export class StatusSidebar {
 		this.renderer.root.add(this.mprisStatusLabel);
 		this.renderer.root.add(this.backendLabel);
 		this.renderer.root.add(this.activityLabel);
+		this.renderer.root.add(this.helpHint);
 	}
 
 	/**
@@ -529,6 +548,13 @@ export class StatusSidebar {
 		this.typedActivityLabel.update({
 			left: layout.rightSidebarX + 2,
 			top: layout.rightSidebarY + 14,
+		});
+
+		// Help hint at bottom of sidebar
+		const bottomY = layout.rightSidebarY + layout.rightSidebarHeight - 2;
+		this.typedHelpHint.update({
+			left: layout.rightSidebarX + 2,
+			top: bottomY,
 		});
 	}
 

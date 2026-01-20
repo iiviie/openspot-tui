@@ -4,6 +4,7 @@ import type { CliRenderer, LayoutDimensions } from "../types";
 import type {
 	CommandPalette,
 	ContentWindow,
+	HelpModal,
 	NowPlaying,
 	SearchBar,
 	Sidebar,
@@ -34,6 +35,7 @@ export class AppLifecycle implements IAppLifecycle {
 			statusSidebar: StatusSidebar;
 			nowPlaying: NowPlaying;
 			commandPalette: CommandPalette;
+			helpModal: HelpModal;
 		},
 		private updateInterval: Timer | null,
 		private onLayoutChange: (layout: LayoutDimensions) => void,
@@ -190,6 +192,7 @@ export class AppLifecycle implements IAppLifecycle {
 			this.components.statusSidebar?.destroy();
 			this.components.nowPlaying?.destroy();
 			this.components.commandPalette?.destroy();
+			this.components.helpModal?.destroy();
 		} catch (e) {
 			// Ignore errors during component cleanup
 		}

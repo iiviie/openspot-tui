@@ -14,27 +14,52 @@ export interface Command {
 	action: () => void | Promise<void>;
 }
 
-// Category label color (muted purple/lavender like in Claude Code)
-const CATEGORY_COLOR = "#a78bfa"; // violet-400
+/**
+ * Display item - either a category header or a command
+ */
+interface DisplayItem {
+	type: "category" | "command";
+	content: string;
+	command?: Command;
+	commandIndex?: number; // Index in filteredCommands (for selection tracking)
+}
 
-// Overlay color for dimming background
-const OVERLAY_COLOR = "#000000";
+// Colors matching the reference image
+const CATEGORY_COLOR = "#f97316"; // Orange for category headers
+const SELECTION_BG = "#6b21a8"; // Purple/magenta for selection
+
+// Minimum dimensions
+const MIN_WIDTH = 40;
+const MIN_HEIGHT = 12;
+const MAX_WIDTH = 80;
+const MAX_HEIGHT = 30;
+
+// Layout constants
+const HEADER_LINES = 5; // Lines used by header: title(1) + blank(1) + search(1) + blank(1) + buffer(1)
 
 /**
  * CommandPalette component - modal popup for commands (Ctrl+P)
- * Responsive design that adapts to terminal size
+ *
+ * Features:
+ * - Borderless design matching reference image
+ * - Proper scroll behavior with viewport tracking
+ * - Category headers (non-selectable)
+ * - Purple/magenta selection highlight
+ * - Responsive sizing with edge case handling
  */
 export class CommandPalette {
 	private overlay: BoxRenderable;
 	private container: BoxRenderable;
-	private titleBar: TextRenderable;
+	private titleLabel: TextRenderable;
+	private escLabel: TextRenderable;
 	private searchInput: TextRenderable;
 	private commandItems: TextRenderable[] = [];
 
 	// Typed wrappers for safe property updates
 	private typedOverlay!: TypedBox;
 	private typedContainer!: TypedBox;
-	private typedTitleBar!: TypedText;
+	private typedTitleLabel!: TypedText;
+	private typedEscLabel!: TypedText;
 	private typedSearchInput!: TypedText;
 	private typedCommandItems: TypedText[] = [];
 
@@ -43,6 +68,10 @@ export class CommandPalette {
 	private selectedIndex: number = 0;
 	private searchText: string = "";
 	private isVisible: boolean = false;
+
+	// Scroll state
+	private scrollOffset: number = 0;
+	private displayItems: DisplayItem[] = [];
 
 	// Callbacks
 	public onClose: (() => void) | null = null;
@@ -60,43 +89,63 @@ export class CommandPalette {
 		this.calculateDimensions();
 		this.overlay = this.createOverlay();
 		this.container = this.createContainer();
-		this.titleBar = this.createTitleBar();
+		this.titleLabel = this.createTitleLabel();
+		this.escLabel = this.createEscLabel();
 		this.searchInput = this.createSearchInput();
 		this.commandItems = this.createCommandItems();
 
 		// Wrap renderables for type-safe updates
 		this.typedOverlay = typedBox(this.overlay);
 		this.typedContainer = typedBox(this.container);
-		this.typedTitleBar = typedText(this.titleBar);
+		this.typedTitleLabel = typedText(this.titleLabel);
+		this.typedEscLabel = typedText(this.escLabel);
 		this.typedSearchInput = typedText(this.searchInput);
 		this.typedCommandItems = this.commandItems.map((item) => typedText(item));
 	}
 
 	/**
 	 * Calculate responsive dimensions based on terminal size
+	 * Handles edge cases for very small or large terminals
 	 */
 	private calculateDimensions(): void {
-		// Width: 50% of terminal width, min 50, max 80
+		const termWidth = this.layout.termWidth;
+		const termHeight = this.layout.termHeight;
+
+		// Width: 60% of terminal width, with min/max bounds
 		this.paletteWidth = Math.min(
-			80,
-			Math.max(50, Math.floor(this.layout.termWidth * 0.5)),
+			MAX_WIDTH,
+			Math.max(MIN_WIDTH, Math.floor(termWidth * 0.6)),
 		);
 
-		// Height: 60% of terminal height, min 15, max 25
+		// Height: 70% of terminal height, with min/max bounds
 		this.paletteHeight = Math.min(
-			25,
-			Math.max(15, Math.floor(this.layout.termHeight * 0.6)),
+			MAX_HEIGHT,
+			Math.max(MIN_HEIGHT, Math.floor(termHeight * 0.7)),
 		);
 
-		// Max visible items: height - 5 (for border, title, search, padding)
-		this.maxVisibleItems = this.paletteHeight - 5;
+		// Ensure palette fits in terminal
+		if (this.paletteWidth > termWidth - 4) {
+			this.paletteWidth = Math.max(MIN_WIDTH, termWidth - 4);
+		}
+		if (this.paletteHeight > termHeight - 2) {
+			this.paletteHeight = Math.max(MIN_HEIGHT, termHeight - 2);
+		}
+
+		// Max visible items: height minus header lines (title + search + spacing)
+		// Leave 1 line at bottom for padding
+		this.maxVisibleItems = Math.max(1, this.paletteHeight - HEADER_LINES - 1);
 	}
 
 	private getPosition(): { left: number; top: number } {
-		return {
-			left: Math.floor((this.layout.termWidth - this.paletteWidth) / 2),
-			top: Math.floor((this.layout.termHeight - this.paletteHeight) / 2),
-		};
+		const left = Math.max(
+			0,
+			Math.floor((this.layout.termWidth - this.paletteWidth) / 2),
+		);
+		const top = Math.max(
+			0,
+			Math.floor((this.layout.termHeight - this.paletteHeight) / 2),
+		);
+		return { left, top };
 	}
 
 	private createOverlay(): BoxRenderable {
@@ -105,7 +154,7 @@ export class CommandPalette {
 			id: "command-palette-overlay",
 			width: this.layout.termWidth,
 			height: this.layout.termHeight,
-			backgroundColor: OVERLAY_COLOR,
+			backgroundColor: "#000000",
 			position: "absolute",
 			left: 0,
 			top: 0,
@@ -115,36 +164,42 @@ export class CommandPalette {
 	private createContainer(): BoxRenderable {
 		const { left, top } = this.getPosition();
 
+		// Borderless container matching reference image
 		return new BoxRenderable(this.renderer, {
 			id: "command-palette",
 			width: this.paletteWidth,
 			height: this.paletteHeight,
 			backgroundColor: colors.bgSecondary,
-			borderStyle: "single",
-			borderColor: colors.border,
 			position: "absolute",
 			left,
 			top,
 		});
 	}
 
-	private createTitleBar(): TextRenderable {
+	private createTitleLabel(): TextRenderable {
 		const { left, top } = this.getPosition();
-		const innerWidth = this.paletteWidth - 2;
-
-		// "Commands" on left, "esc" on right
-		const title = "Commands";
-		const escHint = "esc";
-		const padding = innerWidth - title.length - escHint.length;
-		const content = title + " ".repeat(Math.max(1, padding)) + escHint;
 
 		return new TextRenderable(this.renderer, {
 			id: "palette-title",
-			content,
+			content: "Commands",
+			fg: colors.textSecondary,
+			bg: colors.bgSecondary,
+			position: "absolute",
+			left: left + 2,
+			top: top + 1,
+		});
+	}
+
+	private createEscLabel(): TextRenderable {
+		const { left, top } = this.getPosition();
+
+		return new TextRenderable(this.renderer, {
+			id: "palette-esc",
+			content: "esc",
 			fg: colors.textDim,
 			bg: colors.bgSecondary,
 			position: "absolute",
-			left: left + 1,
+			left: left + this.paletteWidth - 5,
 			top: top + 1,
 		});
 	}
@@ -175,7 +230,7 @@ export class CommandPalette {
 					fg: colors.textSecondary,
 					bg: colors.bgSecondary,
 					position: "absolute",
-					left: left + 1,
+					left: left + 2,
 					top: top + 5 + i,
 				}),
 			);
@@ -190,6 +245,7 @@ export class CommandPalette {
 	setCommands(commands: Command[]): void {
 		this.commands = commands;
 		this.filteredCommands = [...commands];
+		this.buildDisplayItems();
 		this.updateDisplay();
 	}
 
@@ -200,8 +256,10 @@ export class CommandPalette {
 		this.isVisible = true;
 		this.searchText = "";
 		this.selectedIndex = 0;
+		this.scrollOffset = 0;
 		this.filteredCommands = [...this.commands];
 		this.calculateDimensions();
+		this.buildDisplayItems();
 		this.updateDisplay();
 		this.render();
 	}
@@ -256,6 +314,7 @@ export class CommandPalette {
 			if (this.searchText.length > 0) {
 				this.searchText = this.searchText.slice(0, -1);
 				this.filterCommands();
+				this.buildDisplayItems();
 				this.updateDisplay();
 			}
 			return true;
@@ -265,6 +324,7 @@ export class CommandPalette {
 		if (key.length === 1 && !ctrl) {
 			this.searchText += key;
 			this.filterCommands();
+			this.buildDisplayItems();
 			this.updateDisplay();
 			return true;
 		}
@@ -288,17 +348,95 @@ export class CommandPalette {
 			);
 		}
 		this.selectedIndex = 0;
+		this.scrollOffset = 0;
 	}
 
 	/**
-	 * Move selection up or down
+	 * Build display items from filtered commands (with category headers)
+	 */
+	private buildDisplayItems(): void {
+		this.displayItems = [];
+
+		if (this.filteredCommands.length === 0) {
+			// No results
+			this.displayItems.push({
+				type: "category",
+				content: "No matching commands",
+			});
+			return;
+		}
+
+		// Group commands by category
+		const grouped = new Map<string, Command[]>();
+		for (const cmd of this.filteredCommands) {
+			const category = cmd.category || "Commands";
+			if (!grouped.has(category)) {
+				grouped.set(category, []);
+			}
+			grouped.get(category)?.push(cmd);
+		}
+
+		// Flatten with category headers
+		let commandIndex = 0;
+		for (const [category, cmds] of grouped) {
+			// Add category header
+			this.displayItems.push({ type: "category", content: category });
+
+			for (const cmd of cmds) {
+				this.displayItems.push({
+					type: "command",
+					content: cmd.label,
+					command: cmd,
+					commandIndex,
+				});
+				commandIndex++;
+			}
+		}
+	}
+
+	/**
+	 * Move selection up or down (skipping category headers)
 	 */
 	private moveSelection(delta: number): void {
+		if (this.filteredCommands.length === 0) return;
+
 		const newIndex = this.selectedIndex + delta;
 		if (newIndex >= 0 && newIndex < this.filteredCommands.length) {
 			this.selectedIndex = newIndex;
+			this.ensureSelectedVisible();
 			this.updateDisplay();
 		}
+	}
+
+	/**
+	 * Ensure the selected item is visible in the viewport
+	 */
+	private ensureSelectedVisible(): void {
+		// Find the display index of the selected command
+		let displayIndex = 0;
+		for (let i = 0; i < this.displayItems.length; i++) {
+			const item = this.displayItems[i];
+			if (item.type === "command" && item.commandIndex === this.selectedIndex) {
+				displayIndex = i;
+				break;
+			}
+		}
+
+		// Adjust scroll offset to keep selected item visible
+		if (displayIndex < this.scrollOffset) {
+			// Selected item is above viewport - scroll up
+			this.scrollOffset = displayIndex;
+		} else if (displayIndex >= this.scrollOffset + this.maxVisibleItems) {
+			// Selected item is below viewport - scroll down
+			this.scrollOffset = displayIndex - this.maxVisibleItems + 1;
+		}
+
+		// Clamp scroll offset
+		const maxScroll = Math.max(
+			0,
+			this.displayItems.length - this.maxVisibleItems,
+		);
+		this.scrollOffset = Math.max(0, Math.min(this.scrollOffset, maxScroll));
 	}
 
 	/**
@@ -318,86 +456,64 @@ export class CommandPalette {
 	 * Update the display
 	 */
 	private updateDisplay(): void {
-		const innerWidth = this.paletteWidth - 2;
+		// Full width for selection bar (container width minus left/right padding of 2 each)
+		const fullWidth = this.paletteWidth - 4;
 
-		// Update search input
-		const searchContent = this.searchText ? this.searchText : "Search";
+		// Update search input - show typed text or placeholder
+		const searchContent = this.searchText || "Search";
 		this.typedSearchInput.update({
 			content: searchContent,
 			fg: this.searchText ? colors.textPrimary : colors.textDim,
 		});
 
-		// Group commands by category
-		const grouped = new Map<string, Command[]>();
-
-		for (const cmd of this.filteredCommands) {
-			const category = cmd.category || "Commands";
-			if (!grouped.has(category)) {
-				grouped.set(category, []);
-			}
-			grouped.get(category)?.push(cmd);
-		}
-
-		// Flatten with category headers for display
-		const displayItems: Array<{
-			type: "category" | "command";
-			content: string;
-			command?: Command;
-			isSelected?: boolean;
-		}> = [];
-		let currentIndex = 0;
-
-		for (const [category, cmds] of grouped) {
-			// Add category header
-			displayItems.push({ type: "category", content: category });
-
-			for (const cmd of cmds) {
-				const isSelected = currentIndex === this.selectedIndex;
-				displayItems.push({
-					type: "command",
-					content: cmd.label,
-					command: cmd,
-					isSelected,
-				});
-				currentIndex++;
-			}
-		}
+		// Get visible items based on scroll offset
+		const visibleItems = this.displayItems.slice(
+			this.scrollOffset,
+			this.scrollOffset + this.maxVisibleItems,
+		);
 
 		// Update display items
-		for (let i = 0; i < this.commandItems.length; i++) {
-			if (i < displayItems.length) {
-				const item = displayItems[i];
+		for (let i = 0; i < this.typedCommandItems.length; i++) {
+			if (i < visibleItems.length) {
+				const item = visibleItems[i];
+
 				if (item.type === "category") {
-					// Category header styling (muted purple like in the image)
+					// Category header styling (orange)
+					// Pad to full width for consistent background
+					const categoryContent = item.content.padEnd(fullWidth, " ");
 					this.typedCommandItems[i].update({
-						content: item.content,
+						content: categoryContent,
 						fg: CATEGORY_COLOR,
 						bg: colors.bgSecondary,
 					});
 				} else {
 					// Command item styling
-					const shortcut = item.command?.shortcut
-						? `${item.command.shortcut}`
-						: "";
+					const isSelected = item.commandIndex === this.selectedIndex;
+					const shortcut = item.command?.shortcut || "";
 					let label = item.content;
 
-					// Calculate available space for label
-					const availableWidth = innerWidth - shortcut.length - 2;
-					if (label.length > availableWidth) {
-						label = `${label.substring(0, availableWidth - 1)}…`;
+					// Calculate available space for label (leave room for shortcut)
+					const availableWidth = fullWidth - shortcut.length - 2;
+					if (label.length > availableWidth && availableWidth > 3) {
+						label = `${label.substring(0, availableWidth - 1)}...`;
 					}
 
 					// Build content: label + padding + shortcut
-					const padding = innerWidth - label.length - shortcut.length;
-					const content = label + " ".repeat(Math.max(1, padding)) + shortcut;
+					// Pad to full width so selection bar stretches across
+					const padding = Math.max(
+						1,
+						fullWidth - label.length - shortcut.length,
+					);
+					const content = label + " ".repeat(padding) + shortcut;
 
 					this.typedCommandItems[i].update({
 						content,
-						fg: item.isSelected ? colors.textPrimary : colors.textSecondary,
-						bg: item.isSelected ? colors.highlight : colors.bgSecondary,
+						fg: isSelected ? colors.textPrimary : colors.textSecondary,
+						bg: isSelected ? SELECTION_BG : colors.bgSecondary,
 					});
 				}
 			} else {
+				// Clear unused slots
 				this.typedCommandItems[i].update({
 					content: "",
 					bg: colors.bgSecondary,
@@ -416,7 +532,8 @@ export class CommandPalette {
 		this.renderer.root.add(this.overlay);
 		// Then add the palette on top
 		this.renderer.root.add(this.container);
-		this.renderer.root.add(this.titleBar);
+		this.renderer.root.add(this.titleLabel);
+		this.renderer.root.add(this.escLabel);
 		this.renderer.root.add(this.searchInput);
 		for (const item of this.commandItems) {
 			this.renderer.root.add(item);
@@ -431,6 +548,7 @@ export class CommandPalette {
 			this.renderer.root.remove("command-palette-overlay");
 			this.renderer.root.remove("command-palette");
 			this.renderer.root.remove("palette-title");
+			this.renderer.root.remove("palette-esc");
 			this.renderer.root.remove("palette-search");
 			for (let i = 0; i < this.maxVisibleItems; i++) {
 				this.renderer.root.remove(`palette-item-${i}`);
@@ -445,10 +563,11 @@ export class CommandPalette {
 	 */
 	updateLayout(layout: LayoutDimensions): void {
 		this.layout = layout;
+
+		const oldMaxVisibleItems = this.maxVisibleItems;
 		this.calculateDimensions();
 
 		const { left, top } = this.getPosition();
-		const innerWidth = this.paletteWidth - 2;
 
 		// Update overlay to cover full screen
 		this.typedOverlay.update({
@@ -456,7 +575,7 @@ export class CommandPalette {
 			height: layout.termHeight,
 		});
 
-		// Update container
+		// Update container (borderless)
 		this.typedContainer.update({
 			width: this.paletteWidth,
 			height: this.paletteHeight,
@@ -464,13 +583,15 @@ export class CommandPalette {
 			top,
 		});
 
-		// Update title bar
-		const title = "Commands";
-		const escHint = "esc";
-		const padding = innerWidth - title.length - escHint.length;
-		this.typedTitleBar.update({
-			content: title + " ".repeat(Math.max(1, padding)) + escHint,
-			left: left + 1,
+		// Update title label
+		this.typedTitleLabel.update({
+			left: left + 2,
+			top: top + 1,
+		});
+
+		// Update esc label
+		this.typedEscLabel.update({
+			left: left + this.paletteWidth - 5,
 			top: top + 1,
 		});
 
@@ -478,11 +599,14 @@ export class CommandPalette {
 		this.typedSearchInput.setPosition(left + 2, top + 3);
 
 		// Update command items positions
-		for (let i = 0; i < this.commandItems.length; i++) {
-			this.typedCommandItems[i].setPosition(left + 1, top + 5 + i);
+		for (let i = 0; i < this.typedCommandItems.length; i++) {
+			this.typedCommandItems[i].setPosition(left + 2, top + 5 + i);
 		}
 
+		// If maxVisibleItems changed, we may need to recreate items
+		// For now, just ensure display is updated
 		if (this.isVisible) {
+			this.ensureSelectedVisible();
 			this.updateDisplay();
 		}
 	}

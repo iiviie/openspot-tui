@@ -1,6 +1,7 @@
 export { CommandPalette } from "./CommandPalette";
 export type { Command } from "./CommandPalette";
 export { ContentWindow } from "./ContentWindow";
+export { HelpModal } from "./HelpModal";
 export { NowPlaying } from "./NowPlaying";
 // Legacy exports (deprecated - will be removed)
 export { Queue } from "./Queue";

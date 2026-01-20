@@ -2,6 +2,7 @@ import { ConsolePosition, createCliRenderer } from "@opentui/core";
 import {
 	CommandPalette,
 	ContentWindow,
+	HelpModal,
 	NowPlaying,
 	SearchBar,
 	Sidebar,
@@ -79,6 +80,7 @@ export class App {
 	private statusSidebar!: StatusSidebar;
 	private nowPlaying!: NowPlaying;
 	private commandPalette!: CommandPalette;
+	private helpModal!: HelpModal;
 	private toastManager!: ToastManager;
 
 	// Controllers
@@ -272,6 +274,9 @@ export class App {
 		// Command palette (Ctrl+P)
 		this.commandPalette = new CommandPalette(this.renderer, this.layout);
 
+		// Help modal (? key)
+		this.helpModal = new HelpModal(this.renderer, this.layout);
+
 		// Toast manager
 		this.toastManager = getToastManager(this.renderer, this.layout);
 	}
@@ -339,6 +344,7 @@ export class App {
 			this.sidebar,
 			this.contentWindow,
 			this.toastManager,
+			this.helpModal,
 			this.playbackController,
 			this.navigationController,
 			() => this.lifecycle.exit(),
@@ -357,6 +363,7 @@ export class App {
 				statusSidebar: this.statusSidebar,
 				nowPlaying: this.nowPlaying,
 				commandPalette: this.commandPalette,
+				helpModal: this.helpModal,
 			},
 			this.updateInterval,
 			(layout) => this.handleLayoutChange(layout),
@@ -514,6 +521,8 @@ export class App {
 		this.nowPlaying.render();
 		// Render toasts last (on top of everything)
 		this.toastManager.render();
+		// Render help modal on top of toasts
+		this.helpModal.render();
 	}
 
 	/**
@@ -570,5 +579,6 @@ export class App {
 		this.statusSidebar?.updateLayout(layout);
 		this.nowPlaying?.updateLayout(layout);
 		this.commandPalette?.updateLayout(layout);
+		this.helpModal?.updateLayout(layout);
 	}
 }

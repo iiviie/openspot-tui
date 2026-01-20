@@ -5,6 +5,7 @@ import type { SearchBar } from "../components/SearchBar";
 import type { Sidebar } from "../components/Sidebar";
 import type { ContentWindow } from "../components/ContentWindow";
 import type { ToastManager } from "../components/ToastManager";
+import type { HelpModal } from "../components/HelpModal";
 import type { PlaybackController } from "./PlaybackController";
 import type { NavigationController } from "./NavigationController";
 import { KEY_BINDINGS } from "../config";
@@ -29,6 +30,7 @@ export class InputHandler implements IInputHandler {
 		private sidebar: Sidebar,
 		private contentWindow: ContentWindow,
 		private toastManager: ToastManager | null,
+		private helpModal: HelpModal,
 		private playbackController: PlaybackController,
 		private navigationController: NavigationController,
 		private onExit: () => void,
@@ -42,6 +44,15 @@ export class InputHandler implements IInputHandler {
 		// Check if toast manager handles the input first (highest priority)
 		if (this.toastManager?.handleInput(key.name)) {
 			this.onRender(); // Re-render if toast handled input
+			return;
+		}
+
+		// If help modal is visible, route input to it
+		if (this.helpModal.getIsVisible()) {
+			const handled = this.helpModal.handleInput(key.name);
+			if (handled) {
+				this.onRender();
+			}
 			return;
 		}
 
@@ -82,13 +93,21 @@ export class InputHandler implements IInputHandler {
 			return;
 		}
 
+		// Help modal (? key)
+		// Check both key.name and key.sequence since ? is Shift+/
+		if (keyName === "?" || key.sequence === "?") {
+			this.helpModal.toggle();
+			this.onRender();
+			return;
+		}
+
 		if ((KEY_BINDINGS.quit as readonly string[]).includes(keyName)) {
 			this.onExit();
 			return;
 		}
 
-		// Enter search mode with /
-		if (keyName === "/" || keyName === "slash") {
+		// Enter search mode with / (but not ? which is Shift+/)
+		if ((keyName === "/" || keyName === "slash") && key.sequence !== "?") {
 			this.inputMode = "search";
 			this.searchBar.activate();
 			return;
