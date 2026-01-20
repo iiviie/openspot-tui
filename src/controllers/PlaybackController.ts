@@ -1,7 +1,7 @@
 import type { IPlaybackController } from "../interfaces";
 import type { IMprisService, LoopStatus } from "../types/mpris";
 import type { CurrentTrack } from "../types";
-import type { StatusSidebar, NowPlaying } from "../components";
+import type { StatusSidebar, NowPlaying, Sidebar } from "../components";
 import type { MprisStateManager } from "./MprisStateManager";
 import type { StateManager } from "../state";
 import { SEEK_STEP_MS } from "../config";
@@ -24,6 +24,7 @@ export class PlaybackController implements IPlaybackController {
 		private mpris: IMprisService,
 		private stateManager: StateManager,
 		private mprisStateManager: MprisStateManager,
+		private sidebar: Sidebar | null,
 		private statusSidebar: StatusSidebar | null,
 		private nowPlaying: NowPlaying | null,
 		private onActionFeedback: (action: string) => void,
@@ -77,7 +78,7 @@ export class PlaybackController implements IPlaybackController {
 		this.onActionFeedback("Next track");
 
 		// Play from queue if available, otherwise use MPRIS next
-		if (this.statusSidebar?.hasQueuedItems()) {
+		if (this.sidebar?.hasQueuedItems()) {
 			await this.mprisStateManager.playNextFromQueue();
 		} else {
 			await this.mpris.next();

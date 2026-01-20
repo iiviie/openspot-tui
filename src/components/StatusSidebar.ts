@@ -4,15 +4,6 @@ import type { CliRenderer, CurrentTrack, LayoutDimensions } from "../types";
 import { typedBox, typedText, TypedBox, TypedText } from "../ui";
 
 /**
- * Queue item interface
- */
-export interface QueueItem {
-	uri: string;
-	title: string;
-	artist: string;
-}
-
-/**
  * Granular spotifyd daemon states
  */
 export type SpotifydState =
@@ -55,9 +46,10 @@ export interface ConnectionStatus {
 
 /**
  * Status sidebar component (right side)
- * Shows playback status, volume, shuffle/repeat state, connection status, and queue
+ * Shows playback status, volume, shuffle/repeat state, and connection status
+ * Note: Queue has been moved to the left Sidebar component
  *
- * ✅ Type-safe: Uses TypedBox/TypedText wrappers (no 'as any')
+ * Type-safe: Uses TypedBox/TypedText wrappers (no 'as any')
  */
 export class StatusSidebar {
 	// Raw renderables
@@ -72,8 +64,6 @@ export class StatusSidebar {
 	private mprisStatusLabel: TextRenderable;
 	private backendLabel: TextRenderable;
 	private activityLabel: TextRenderable;
-	private queueTitle: TextRenderable;
-	private queueItems: TextRenderable[] = [];
 
 	// Typed wrappers (eliminates 'as any')
 	private typedContainer: TypedBox;
@@ -87,10 +77,7 @@ export class StatusSidebar {
 	private typedMprisStatusLabel: TypedText;
 	private typedBackendLabel: TypedText;
 	private typedActivityLabel: TypedText;
-	private typedQueueTitle: TypedText;
-	private typedQueueItems: TypedText[] = [];
 
-	private queue: QueueItem[] = [];
 	private connectionStatus: ConnectionStatus = {
 		spotifydInstalled: false,
 		spotifydRunning: false,
@@ -119,8 +106,6 @@ export class StatusSidebar {
 		this.mprisStatusLabel = this.createMprisStatusLabel();
 		this.backendLabel = this.createBackendLabel();
 		this.activityLabel = this.createActivityLabel();
-		this.queueTitle = this.createQueueTitle();
-		this.queueItems = this.createQueueItems();
 
 		// Wrap with type-safe wrappers
 		this.typedContainer = typedBox(this.container);
@@ -134,8 +119,6 @@ export class StatusSidebar {
 		this.typedMprisStatusLabel = typedText(this.mprisStatusLabel);
 		this.typedBackendLabel = typedText(this.backendLabel);
 		this.typedActivityLabel = typedText(this.activityLabel);
-		this.typedQueueTitle = typedText(this.queueTitle);
-		this.typedQueueItems = this.queueItems.map((item) => typedText(item));
 	}
 
 	private createContainer(): BoxRenderable {
@@ -395,115 +378,6 @@ export class StatusSidebar {
 		return lastAction;
 	}
 
-	private createQueueTitle(): TextRenderable {
-		return new TextRenderable(this.renderer, {
-			id: "queue-title",
-			content: "QUEUE",
-			fg: colors.textDim,
-			position: "absolute",
-			left: this.layout.rightSidebarX + 2,
-			top: this.layout.rightSidebarY + 16,
-		});
-	}
-
-	private createQueueItems(): TextRenderable[] {
-		// Calculate how many queue items can fit
-		const startY = this.layout.rightSidebarY + 17;
-		const availableHeight = this.layout.rightSidebarHeight - 19;
-		const maxQueueDisplay = Math.max(0, availableHeight);
-
-		const items: TextRenderable[] = [];
-		for (let i = 0; i < maxQueueDisplay; i++) {
-			items.push(
-				new TextRenderable(this.renderer, {
-					id: `queue-item-${i}`,
-					content: "",
-					fg: colors.textSecondary,
-					position: "absolute",
-					left: this.layout.rightSidebarX + 2,
-					top: startY + i,
-				}),
-			);
-		}
-		return items;
-	}
-
-	/**
-	 * Add a track to the queue
-	 */
-	addToQueue(item: QueueItem): void {
-		this.queue.push(item);
-		this.updateQueueDisplay();
-	}
-
-	/**
-	 * Remove first item from queue (after playing)
-	 */
-	dequeue(): QueueItem | undefined {
-		const item = this.queue.shift();
-		this.updateQueueDisplay();
-		return item;
-	}
-
-	/**
-	 * Get the current queue
-	 */
-	getQueue(): QueueItem[] {
-		return [...this.queue];
-	}
-
-	/**
-	 * Clear the queue
-	 */
-	clearQueue(): void {
-		this.queue = [];
-		this.updateQueueDisplay();
-	}
-
-	/**
-	 * Check if queue has items
-	 */
-	hasQueuedItems(): boolean {
-		return this.queue.length > 0;
-	}
-
-	/**
-	 * Get next track from queue without removing
-	 */
-	peekQueue(): QueueItem | undefined {
-		return this.queue[0];
-	}
-
-	private updateQueueDisplay(): void {
-		const maxWidth = this.layout.rightSidebarWidth - 4;
-
-		for (let i = 0; i < this.typedQueueItems.length; i++) {
-			if (i < this.queue.length) {
-				const item = this.queue[i];
-				const num = `${i + 1}. `;
-				let content = `${num}${item.title}`;
-
-				// Truncate if needed
-				if (content.length > maxWidth) {
-					content = `${content.substring(0, maxWidth - 1)}…`;
-				}
-
-				// ✅ Type-safe update (no 'as any')
-				this.typedQueueItems[i].update({
-					content,
-					fg: i === 0 ? colors.accent : colors.textSecondary,
-				});
-			} else if (i === 0 && this.queue.length === 0) {
-				this.typedQueueItems[i].update({
-					content: "(empty)",
-					fg: colors.textDim,
-				});
-			} else {
-				this.typedQueueItems[i].update({ content: "" });
-			}
-		}
-	}
-
 	/**
 	 * Update status info
 	 */
@@ -518,7 +392,7 @@ export class StatusSidebar {
 		if (shuffle !== undefined) this.shuffle = shuffle;
 		if (repeat !== undefined) this.repeat = repeat;
 
-		// ✅ Type-safe updates (no 'as any')
+		// Type-safe updates (no 'as any')
 		const playIcon = this.track?.isPlaying ? "Playing" : "Paused";
 		this.typedPlaybackStatus.update({
 			content: playIcon,
@@ -544,7 +418,7 @@ export class StatusSidebar {
 	updateConnectionStatus(status: ConnectionStatus): void {
 		this.connectionStatus = status;
 
-		// ✅ Type-safe updates (no 'as any')
+		// Type-safe updates (no 'as any')
 		this.typedSpotifydStatusLabel.update({
 			content: this.getSpotifydStatusText(),
 			fg: this.getSpotifydStatusColor(),
@@ -591,13 +465,6 @@ export class StatusSidebar {
 		this.renderer.root.add(this.mprisStatusLabel);
 		this.renderer.root.add(this.backendLabel);
 		this.renderer.root.add(this.activityLabel);
-		this.renderer.root.add(this.queueTitle);
-		for (const item of this.queueItems) {
-			this.renderer.root.add(item);
-		}
-
-		// Initial queue display
-		this.updateQueueDisplay();
 	}
 
 	/**
@@ -606,7 +473,7 @@ export class StatusSidebar {
 	updateLayout(layout: LayoutDimensions): void {
 		this.layout = layout;
 
-		// ✅ Type-safe updates (no 'as any')
+		// Type-safe updates (no 'as any')
 		this.typedContainer.update({
 			width: layout.rightSidebarWidth,
 			height: layout.rightSidebarHeight,
@@ -663,23 +530,6 @@ export class StatusSidebar {
 			left: layout.rightSidebarX + 2,
 			top: layout.rightSidebarY + 14,
 		});
-
-		this.typedQueueTitle.update({
-			left: layout.rightSidebarX + 2,
-			top: layout.rightSidebarY + 16,
-		});
-
-		// Update queue items
-		const startY = layout.rightSidebarY + 17;
-		this.typedQueueItems.forEach((item, index) => {
-			item.update({
-				left: layout.rightSidebarX + 2,
-				top: startY + index,
-			});
-		});
-
-		// Refresh queue display with new dimensions
-		this.updateQueueDisplay();
 	}
 
 	/**

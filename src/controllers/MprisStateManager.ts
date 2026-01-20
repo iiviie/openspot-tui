@@ -1,7 +1,7 @@
 import type { IMprisStateManager } from "../interfaces";
 import type { IMprisService, NowPlayingInfo } from "../types/mpris";
 import type { CurrentTrack } from "../types";
-import type { StatusSidebar } from "../components";
+import type { Sidebar } from "../components";
 import type { SpotifyApiService } from "../services";
 import type { StateManager } from "../state";
 import { TRACK_END_THRESHOLD_MS } from "../config";
@@ -27,7 +27,7 @@ export class MprisStateManager implements IMprisStateManager {
 	constructor(
 		private mpris: IMprisService,
 		private stateManager: StateManager,
-		private statusSidebar: StatusSidebar | null,
+		private sidebar: Sidebar | null,
 		private spotifyApi: SpotifyApiService,
 	) {}
 
@@ -120,8 +120,8 @@ export class MprisStateManager implements IMprisStateManager {
 	 * Handle track state changes - sync visual queue and trigger queue playback
 	 */
 	async handleTrackState(nowPlaying: NowPlayingInfo): Promise<void> {
-		// Skip if statusSidebar not yet initialized
-		if (!this.statusSidebar) return;
+		// Skip if sidebar not yet initialized
+		if (!this.sidebar) return;
 
 		const currentTitle = nowPlaying.title;
 		const positionMs = nowPlaying.positionMs;
@@ -133,10 +133,10 @@ export class MprisStateManager implements IMprisStateManager {
 			this.previousTrackTitle = currentTitle;
 
 			// Check if the now playing track is the first item in our visual queue
-			const queuePeek = this.statusSidebar.peekQueue();
+			const queuePeek = this.sidebar.peekQueue();
 			if (queuePeek && queuePeek.title === currentTitle) {
 				// The queued track is now playing, remove it from visual queue
-				this.statusSidebar.dequeue();
+				this.sidebar.dequeue();
 			}
 		}
 
@@ -159,7 +159,7 @@ export class MprisStateManager implements IMprisStateManager {
 		if (
 			isAboutToEnd &&
 			!this.trackEndHandled &&
-			this.statusSidebar.hasQueuedItems()
+			this.sidebar.hasQueuedItems()
 		) {
 			this.trackEndHandled = true;
 			await this.playNextFromQueue();
@@ -170,15 +170,15 @@ export class MprisStateManager implements IMprisStateManager {
 	 * Play the next track from the queue
 	 */
 	async playNextFromQueue(): Promise<void> {
-		if (!this.statusSidebar) return;
+		if (!this.sidebar) return;
 
-		const nextTrack = this.statusSidebar.dequeue();
+		const nextTrack = this.sidebar.dequeue();
 		if (nextTrack) {
 			try {
 				await this.spotifyApi.playTrack(nextTrack.uri);
 			} catch (_error) {
 				// Failed to play, re-add to queue
-				this.statusSidebar.addToQueue(nextTrack);
+				this.sidebar.addToQueue(nextTrack);
 			}
 		}
 	}

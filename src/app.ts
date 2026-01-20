@@ -282,18 +282,21 @@ export class App {
 	 */
 	private setupControllers(): void {
 		// MPRIS State Manager - handles polling and state updates
+		// Now uses sidebar for queue operations
 		this.mprisStateManager = new MprisStateManager(
 			this.mpris,
 			this.stateManager,
-			this.statusSidebar,
+			this.sidebar,
 			this.spotifyApi,
 		);
 
 		// Playback Controller - handles all playback controls
+		// Uses sidebar for queue, statusSidebar for status display
 		this.playbackController = new PlaybackController(
 			this.mpris,
 			this.stateManager,
 			this.mprisStateManager,
+			this.sidebar,
 			this.statusSidebar,
 			this.nowPlaying,
 			(action) => this.statusSidebar?.setLastAction(action),
@@ -329,12 +332,12 @@ export class App {
 		);
 
 		// Input Handler - routes keyboard input
+		// No longer needs statusSidebar (queue moved to sidebar)
 		this.inputHandler = new InputHandler(
 			this.commandPalette,
 			this.searchBar,
 			this.sidebar,
 			this.contentWindow,
-			this.statusSidebar,
 			this.toastManager,
 			this.playbackController,
 			this.navigationController,

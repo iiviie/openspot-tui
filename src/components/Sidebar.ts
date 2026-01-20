@@ -5,7 +5,16 @@ import type { CliRenderer, LayoutDimensions, MenuItem } from "../types";
 import { typedBox, typedText, TypedBox, TypedText } from "../ui";
 
 /**
- * Sidebar component displaying welcome section + library menu (left side)
+ * Queue item interface
+ */
+export interface QueueItem {
+	uri: string;
+	title: string;
+	artist: string;
+}
+
+/**
+ * Sidebar component displaying welcome section + library menu + queue (left side)
  */
 export class Sidebar {
 	private container: BoxRenderable;
@@ -18,12 +27,20 @@ export class Sidebar {
 	private isFocused: boolean = false;
 	private username: string | null = null;
 
+	// Queue section
+	private queueTitle: TextRenderable;
+	private queueItems: TextRenderable[] = [];
+	private queue: QueueItem[] = [];
+	private readonly MAX_QUEUE_DISPLAY = 5;
+
 	// Typed wrappers for type-safe updates
 	private typedContainer: TypedBox;
 	private typedWelcomeTitle: TypedText;
 	private typedUsernameLabel: TypedText;
 	private typedTitle: TypedText;
 	private typedMenuItems: TypedText[] = [];
+	private typedQueueTitle: TypedText;
+	private typedQueueItems: TypedText[] = [];
 
 	// Callback when menu item is selected
 	public onSelect: ((item: MenuItem) => void) | null = null;
@@ -41,6 +58,8 @@ export class Sidebar {
 		this.usernameLabel = this.createUsernameLabel();
 		this.title = this.createTitle();
 		this.menuItems = this.createMenuItems();
+		this.queueTitle = this.createQueueTitle();
+		this.queueItems = this.createQueueItems();
 
 		// Wrap renderables for type-safe updates
 		this.typedContainer = typedBox(this.container);
@@ -48,6 +67,8 @@ export class Sidebar {
 		this.typedUsernameLabel = typedText(this.usernameLabel);
 		this.typedTitle = typedText(this.title);
 		this.typedMenuItems = this.menuItems.map((item) => typedText(item));
+		this.typedQueueTitle = typedText(this.queueTitle);
+		this.typedQueueItems = this.queueItems.map((item) => typedText(item));
 	}
 
 	private createContainer(): BoxRenderable {
@@ -126,6 +147,45 @@ export class Sidebar {
 
 	private formatMenuItem(label: string, isSelected: boolean): string {
 		return `${isSelected ? ">" : " "} ${label}`;
+	}
+
+	/**
+	 * Calculate the starting Y position for queue section
+	 * Queue appears after: welcome (2 lines) + blank + LIBRARY title + menu items
+	 */
+	private getQueueStartY(): number {
+		// Lines: 1=WELCOME, 2=username, 3=blank, 4=LIBRARY, 5=blank, 6-9=menu items (4 items), 10=blank, 11=QUEUE
+		return this.layout.leftSidebarY + 6 + this.items.length + 2;
+	}
+
+	private createQueueTitle(): TextRenderable {
+		return new TextRenderable(this.renderer, {
+			id: "queue-title",
+			content: "QUEUE",
+			fg: colors.textDim,
+			position: "absolute",
+			left: this.layout.leftSidebarX + 2,
+			top: this.getQueueStartY(),
+		});
+	}
+
+	private createQueueItems(): TextRenderable[] {
+		const startY = this.getQueueStartY() + 1;
+		const items: TextRenderable[] = [];
+
+		for (let i = 0; i < this.MAX_QUEUE_DISPLAY; i++) {
+			items.push(
+				new TextRenderable(this.renderer, {
+					id: `sidebar-queue-item-${i}`,
+					content: "",
+					fg: colors.textSecondary,
+					position: "absolute",
+					left: this.layout.leftSidebarX + 2,
+					top: startY + i,
+				}),
+			);
+		}
+		return items;
 	}
 
 	/**
@@ -211,6 +271,85 @@ export class Sidebar {
 		});
 	}
 
+	// ─────────────────────────────────────────────────────────────
+	// Queue Management
+	// ─────────────────────────────────────────────────────────────
+
+	/**
+	 * Add a track to the queue
+	 */
+	addToQueue(item: QueueItem): void {
+		this.queue.push(item);
+		this.updateQueueDisplay();
+	}
+
+	/**
+	 * Remove first item from queue (after playing)
+	 */
+	dequeue(): QueueItem | undefined {
+		const item = this.queue.shift();
+		this.updateQueueDisplay();
+		return item;
+	}
+
+	/**
+	 * Get the current queue
+	 */
+	getQueue(): QueueItem[] {
+		return [...this.queue];
+	}
+
+	/**
+	 * Clear the queue
+	 */
+	clearQueue(): void {
+		this.queue = [];
+		this.updateQueueDisplay();
+	}
+
+	/**
+	 * Check if queue has items
+	 */
+	hasQueuedItems(): boolean {
+		return this.queue.length > 0;
+	}
+
+	/**
+	 * Get next track from queue without removing
+	 */
+	peekQueue(): QueueItem | undefined {
+		return this.queue[0];
+	}
+
+	private updateQueueDisplay(): void {
+		const maxWidth = this.layout.leftSidebarWidth - 4;
+
+		for (let i = 0; i < this.typedQueueItems.length; i++) {
+			if (i < this.queue.length) {
+				const item = this.queue[i];
+				const num = `${i + 1}. `;
+				let content = `${num}${item.title}`;
+
+				// Truncate if needed
+				if (content.length > maxWidth) {
+					content = `${content.substring(0, maxWidth - 1)}…`;
+				}
+
+				this.typedQueueItems[i].update({
+					content,
+					fg: i === 0 ? colors.accent : colors.textSecondary,
+				});
+			} else if (i === 0 && this.queue.length === 0) {
+				this.typedQueueItems[i].update({
+					content: "(empty)",
+					fg: colors.textDim,
+				});
+			} else {
+				this.typedQueueItems[i].update({ content: "" });
+			}
+		}
+	}
+
 	/**
 	 * Add all elements to renderer
 	 */
@@ -222,6 +361,13 @@ export class Sidebar {
 		for (const item of this.menuItems) {
 			this.renderer.root.add(item);
 		}
+		// Render queue section
+		this.renderer.root.add(this.queueTitle);
+		for (const item of this.queueItems) {
+			this.renderer.root.add(item);
+		}
+		// Initial queue display
+		this.updateQueueDisplay();
 	}
 
 	/**
@@ -263,6 +409,23 @@ export class Sidebar {
 				top: layout.leftSidebarY + 6 + index,
 			});
 		});
+
+		// Update queue section
+		const queueStartY = this.getQueueStartY();
+		this.typedQueueTitle.update({
+			left: layout.leftSidebarX + 2,
+			top: queueStartY,
+		});
+
+		this.typedQueueItems.forEach((item, index) => {
+			item.update({
+				left: layout.leftSidebarX + 2,
+				top: queueStartY + 1 + index,
+			});
+		});
+
+		// Refresh queue display with new dimensions
+		this.updateQueueDisplay();
 	}
 
 	/**

@@ -7,7 +7,6 @@ import type { ContentWindow } from "../components/ContentWindow";
 import type { ToastManager } from "../components/ToastManager";
 import type { PlaybackController } from "./PlaybackController";
 import type { NavigationController } from "./NavigationController";
-import type { StatusSidebar } from "../components";
 import { KEY_BINDINGS } from "../config";
 import { getLogger } from "../utils";
 
@@ -29,7 +28,6 @@ export class InputHandler implements IInputHandler {
 		private searchBar: SearchBar,
 		private sidebar: Sidebar,
 		private contentWindow: ContentWindow,
-		private statusSidebar: StatusSidebar,
 		private toastManager: ToastManager | null,
 		private playbackController: PlaybackController,
 		private navigationController: NavigationController,
@@ -250,8 +248,8 @@ export class InputHandler implements IInputHandler {
 		const selected = this.contentWindow.getSelectedItem();
 		if (!selected || selected.type !== "track") return;
 
-		// Always add to visual queue for display
-		this.statusSidebar.addToQueue({
+		// Always add to visual queue for display (now using sidebar)
+		this.sidebar.addToQueue({
 			uri: selected.uri,
 			title: selected.title,
 			artist: selected.subtitle,
