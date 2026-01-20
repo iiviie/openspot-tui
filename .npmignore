@@ -1,0 +1,41 @@
+# Dependencies and build artifacts
+node_modules/
+bun.lock
+bun.lockb
+
+# Rust build artifacts (keep only the .node files)
+mpris-native/target/
+mpris-native/Cargo.lock
+mpris-native/src/
+mpris-native/build.rs
+mpris-native/Cargo.toml
+mpris-native/node_modules/
+mpris-native/bun.lock
+mpris-native/package.json
+mpris-native/README.md
+mpris-native/.gitignore
+
+# Development files
+.git/
+.github/
+.vscode/
+.idea/
+docs/
+*.log
+*.tsbuildinfo
+
+# Test and dev scripts
+src/scripts/auth-test.ts
+src/scripts/mpris-test.ts
+src/scripts/native-test.ts
+
+# Config files not needed at runtime
+biome.json
+tsconfig.json
+.env
+.env.*
+AGENTS.md
+
+# OS files
+.DS_Store
+Thumbs.db

@@ -1,4 +1,4 @@
-# spotify-tui
+# openspot-tui
 
 A terminal user interface for Spotify, built with TypeScript and Bun.
 
@@ -11,20 +11,47 @@ A terminal user interface for Spotify, built with TypeScript and Bun.
 ## Installation
 
 ```bash
-git clone https://github.com/yourusername/spotify-tui.git
-cd spotify-tui
-bun install
+# Just run it (no install needed)
+bunx openspot-tui
 ```
 
-The install script automatically downloads [spotifyd](https://github.com/Spotifyd/spotifyd) to `~/.spotify-tui/bin/`.
+Or install globally:
+
+```bash
+bun add -g openspot-tui
+openspot-tui
+```
+
+Note: If `openspot-tui` command is not found after global install, add Bun's bin folder to your PATH:
+
+```bash
+# For zsh (add to ~/.zshrc)
+export PATH="$HOME/.cache/.bun/bin:$PATH"
+
+# For bash (add to ~/.bashrc)
+export PATH="$HOME/.cache/.bun/bin:$PATH"
+```
+
+### From Source
+
+```bash
+git clone https://github.com/iiviie/openspot-tui.git
+cd openspot-tui
+bun install
+bun start
+```
+
+The install script automatically downloads [spotifyd](https://github.com/Spotifyd/spotifyd) on first run.
 
 ## Getting Started
 
 ```bash
-bun start
+openspot-tui
 ```
 
-On first run, you need to authenticate:
+On first run, spotifyd will be downloaded automatically if not found.
+
+Then you need to authenticate:
 
 1. Press `Ctrl+P` to open the command palette
 2. Select **Login to Spotify** - a browser opens for authorization

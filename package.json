@@ -1,11 +1,19 @@
 {
-	"name": "spotify-tui",
-	"version": "1.0.0",
+	"name": "openspot-tui",
+	"version": "1.0.1",
 	"description": "A terminal user interface for Spotify",
 	"type": "module",
 	"bin": {
-		"spotify-tui": "./src/index.ts"
+		"openspot-tui": "./bin/openspot-tui.js"
 	},
+	"main": "./src/index.ts",
+	"files": [
+		"bin",
+		"src",
+		"mpris-native/index.js",
+		"mpris-native/index.d.ts",
+		"mpris-native/mpris-native.linux-x64-gnu.node"
+	],
 	"scripts": {
 		"start": "bun run src/index.ts",
 		"dev": "bun run --watch src/index.ts",
@@ -17,10 +25,10 @@
 		"lint": "biome check src/",
 		"lint:fix": "biome check --write src/",
 		"format": "biome format --write src/",
-		"build:native": "cd mpris-native && cargo build --release && napi build --platform --release",
-		"build:native:debug": "cd mpris-native && cargo build && napi build --platform",
+		"build:native": "cd mpris-native && cargo build --release && npx napi build --platform --release",
+		"build:native:debug": "cd mpris-native && cargo build && npx napi build --platform",
 		"build": "bun run build:native && bun run typecheck",
-		"postinstall": "bun run src/scripts/postinstall.ts"
+		"prepublishOnly": "bun run build"
 	},
 	"keywords": [
 		"spotify",
@@ -28,16 +36,28 @@
 		"terminal",
 		"music",
 		"player",
-		"cli"
+		"cli",
+		"bun"
 	],
-	"author": "",
+	"author": "iiviie",
 	"license": "MIT",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/iiviie/openspot-tui.git"
+	},
+	"homepage": "https://github.com/iiviie/openspot-tui#readme",
+	"bugs": {
+		"url": "https://github.com/iiviie/openspot-tui/issues"
+	},
 	"engines": {
 		"bun": ">=1.0.0"
 	},
 	"os": [
 		"linux",
 		"darwin"
+	],
+	"cpu": [
+		"x64"
 	],
 	"dependencies": {
 		"@opentui/core": "^0.1.69",

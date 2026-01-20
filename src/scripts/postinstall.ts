@@ -17,20 +17,20 @@
 import { getSpotifydInstaller } from "../services/SpotifydInstaller";
 
 function log(message: string): void {
-	console.log(`[spotify-tui] ${message}`);
+	console.log(`[openspot-tui] ${message}`);
 }
 
 function success(message: string): void {
-	console.log(`[spotify-tui] ✅ ${message}`);
+	console.log(`[openspot-tui] ✅ ${message}`);
 }
 
 function error(message: string): void {
-	console.error(`[spotify-tui] ❌ ${message}`);
+	console.error(`[openspot-tui] ❌ ${message}`);
 }
 
 async function main(): Promise<void> {
 	console.log("");
-	log("Setting up spotify-tui...");
+	log("Setting up openspot-tui...");
 	console.log("");
 
 	// Check for skip flag
@@ -110,7 +110,7 @@ async function main(): Promise<void> {
 				success(`Binary location: ${installer.getState().binaryPath}`);
 			}
 			console.log("");
-			log("Run 'spotify-tui' and press Ctrl+P → 'Authenticate Spotifyd'");
+			log("Run 'openspot-tui' and press Ctrl+P → 'Authenticate Spotifyd'");
 			log("to set up OAuth authentication.");
 			console.log("");
 		} else {
