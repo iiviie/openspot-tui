@@ -375,7 +375,7 @@ export class StatusSidebar {
 			this.layout.rightSidebarY + this.layout.rightSidebarHeight - 2;
 		return new TextRenderable(this.renderer, {
 			id: "help-hint",
-			content: "? Help",
+			content: "? Help  f Queue",
 			fg: colors.textDim,
 			position: "absolute",
 			left: this.layout.rightSidebarX + 2,
