@@ -200,10 +200,10 @@ export class InputHandler implements IInputHandler {
 			case "space":
 				await this.playbackController.playPause();
 				break;
-			case "n":
+			case "w": // Forward (vim-style word forward)
 				await this.playbackController.next();
 				break;
-			case "p":
+			case "b": // Backward (vim-style word backward)
 				await this.playbackController.previous();
 				break;
 			case "=": // Plus key (unshifted)
