@@ -1,6 +1,18 @@
-# openspot-tui
+<div align="center">
+  <img src="resources/icon.png" width="600">
+</div>
 
-A terminal user interface for Spotify, built with TypeScript and Bun.
+<div align="center">
+  <h1>openspot-tui</h1>
+  A terminal user interface for Spotify, built with TypeScript and Bun.
+</div>
+
+<div align="center">
+  
+  [![npm version](https://img.shields.io/npm/v/openspot-tui)](https://www.npmjs.com/package/openspot-tui)
+  [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+  
+</div>
 
 ## Requirements
 
