@@ -14,6 +14,18 @@
   
 </div>
 
+## Screenshots
+
+<div align="center">
+  <img src="resources/playlists.png" width="800" alt="Playlists View">
+  <p><em>Browse your playlists and library</em></p>
+</div>
+
+<div align="center">
+  <img src="resources/SongsScreenshot.png" width="800" alt="Songs View">
+  <p><em>View and play your saved tracks</em></p>
+</div>
+
 ## Requirements
 
 - [Bun](https://bun.sh/) >= 1.0.0
